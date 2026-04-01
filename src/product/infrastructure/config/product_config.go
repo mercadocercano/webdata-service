@@ -3,27 +3,29 @@ package config
 import (
 	"database/sql"
 
-	prdcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
-	prdpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
-	prduc "github.com/mercadocercano/webdata-service/src/product/application/usecase"
+	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
+	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
+	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
+	productport "github.com/mercadocercano/webdata-service/src/product/domain/port"
 )
 
 type ProductModule struct {
-	Controller *prdcontroller.ProductController
-	Repo       *prdpersistence.PostgresProductRepository
-	UpsertUC   *prduc.UpsertProductsUseCase
+	Repo       productport.ProductRepository
+	UpsertUC   *productusecase.UpsertProductsUseCase
+	Controller *productcontroller.ProductController
 }
 
 func NewProductModule(db *sql.DB) *ProductModule {
-	repo := prdpersistence.NewPostgresProductRepository(db)
-	listUC := prduc.NewListProductsUseCase(repo)
-	getUC := prduc.NewGetProductUseCase(repo)
-	priceHistUC := prduc.NewGetPriceHistoryUseCase(repo)
-	upsertUC := prduc.NewUpsertProductsUseCase(repo)
+	repo := productpersistence.NewPostgresProductRepository(db)
+	upsertUC := productusecase.NewUpsertProductsUseCase(repo)
+	listUC := productusecase.NewListProductsUseCase(repo)
+	getUC := productusecase.NewGetProductUseCase(repo)
+	priceHistUC := productusecase.NewGetPriceHistoryUseCase(repo)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC)
 
 	return &ProductModule{
-		Controller: prdcontroller.NewProductController(listUC, getUC, priceHistUC),
 		Repo:       repo,
 		UpsertUC:   upsertUC,
+		Controller: ctrl,
 	}
 }

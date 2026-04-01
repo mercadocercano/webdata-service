@@ -2,49 +2,37 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/stats/application/response"
-	productport "github.com/mercadocercano/webdata-service/src/product/domain/port"
-	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
 )
 
 type GetSourceStatsUseCase struct {
-	sourceRepo  sourceport.SourceRepository
-	jobRepo     scrapeport.ScrapingJobRepository
-	productRepo productport.ProductRepository
+	sourceRepo sourceport.SourceRepository
 }
 
-func NewGetSourceStatsUseCase(
-	sourceRepo sourceport.SourceRepository,
-	jobRepo scrapeport.ScrapingJobRepository,
-	productRepo productport.ProductRepository,
-) *GetSourceStatsUseCase {
-	return &GetSourceStatsUseCase{sourceRepo: sourceRepo, jobRepo: jobRepo, productRepo: productRepo}
+func NewGetSourceStatsUseCase(sourceRepo sourceport.SourceRepository) *GetSourceStatsUseCase {
+	return &GetSourceStatsUseCase{sourceRepo: sourceRepo}
 }
 
 func (uc *GetSourceStatsUseCase) Execute(ctx context.Context, tenantID uuid.UUID) ([]response.SourceStatsResponse, error) {
-	sources, _, err := uc.sourceRepo.FindAll(ctx, tenantID, sourceport.SourceFilter{PageSize: 10000})
+	sources, _, err := uc.sourceRepo.FindAll(ctx, tenantID, sourceport.SourceFilter{PageSize: 9999})
 	if err != nil {
-		return nil, fmt.Errorf("fetching sources: %w", err)
+		return nil, err
 	}
 
-	result := make([]response.SourceStatsResponse, 0, len(sources))
-	for _, s := range sources {
-		sourceID := s.ID
-		_, totalJobs, _ := uc.jobRepo.FindAll(ctx, tenantID, scrapeport.JobFilter{SourceID: &sourceID, PageSize: 1})
-		_, totalProducts, _ := uc.productRepo.FindAll(ctx, tenantID, productport.ProductFilter{SourceID: &sourceID, PageSize: 1})
-
-		result = append(result, response.SourceStatsResponse{
-			SourceID:      s.ID,
-			Name:          s.Name,
-			TotalProducts: totalProducts,
-			TotalJobs:     totalJobs,
-			HealthScore:   s.HealthScore,
-		})
+	result := make([]response.SourceStatsResponse, len(sources))
+	for i, s := range sources {
+		result[i] = response.SourceStatsResponse{
+			SourceID:       s.ID.String(),
+			Name:           s.Name,
+			HealthScore:    s.HealthScore,
+			TotalRuns:      s.TotalRuns,
+			SuccessfulRuns: s.SuccessfulRuns,
+			FailedRuns:     s.FailedRuns,
+			IsActive:       s.IsActive,
+		}
 	}
-
 	return result, nil
 }

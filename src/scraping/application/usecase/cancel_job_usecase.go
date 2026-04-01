@@ -2,30 +2,26 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 )
 
 type CancelJobUseCase struct {
-	repo port.ScrapingJobRepository
+	repo scrapingport.ScrapingJobRepository
 }
 
-func NewCancelJobUseCase(repo port.ScrapingJobRepository) *CancelJobUseCase {
+func NewCancelJobUseCase(repo scrapingport.ScrapingJobRepository) *CancelJobUseCase {
 	return &CancelJobUseCase{repo: repo}
 }
 
 func (uc *CancelJobUseCase) Execute(ctx context.Context, tenantID, id uuid.UUID) error {
 	job, err := uc.repo.FindByID(ctx, tenantID, id)
 	if err != nil {
-		return fmt.Errorf("job not found: %w", err)
+		return err
 	}
 	if err := job.Cancel(); err != nil {
-		return fmt.Errorf("cancelling job: %w", err)
+		return err
 	}
-	if err := uc.repo.Update(ctx, job); err != nil {
-		return fmt.Errorf("saving cancelled job: %w", err)
-	}
-	return nil
+	return uc.repo.Update(ctx, job)
 }

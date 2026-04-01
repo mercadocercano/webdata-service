@@ -3,31 +3,37 @@ package config
 import (
 	"database/sql"
 
-	scrapeuc "github.com/mercadocercano/webdata-service/src/scraping/application/usecase"
-	scrapecontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
-	scrapepersistence "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/persistence"
-	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	scrapingcontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
+	scrapingpersistence "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/persistence"
+	scrapingusecase "github.com/mercadocercano/webdata-service/src/scraping/application/usecase"
+	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 )
 
 type ScrapingModule struct {
-	Controller *scrapecontroller.JobController
-	Repo       *scrapepersistence.PostgresJobRepository
-	ExecuteUC  *scrapeuc.ExecuteScrapeUseCase
+	Repo       scrapingport.ScrapingJobRepository
+	Controller *scrapingcontroller.JobController
+	ExecuteUC  *scrapingusecase.ExecuteScrapingUseCase
 }
 
-func NewScrapingModule(db *sql.DB, sourceRepo sourceport.SourceRepository, scraper scrapeport.ScraperPort, upserter scrapeuc.ProductUpserter) *ScrapingModule {
-	repo := scrapepersistence.NewPostgresJobRepository(db)
-
-	listUC := scrapeuc.NewListJobsUseCase(repo)
-	getUC := scrapeuc.NewGetJobUseCase(repo)
-	cancelUC := scrapeuc.NewCancelJobUseCase(repo)
-	retryUC := scrapeuc.NewRetryJobUseCase(repo)
-	executeUC := scrapeuc.NewExecuteScrapeUseCase(sourceRepo, repo, scraper, upserter)
+func NewScrapingModule(
+	db *sql.DB,
+	sourceRepo sourceport.SourceRepository,
+	scraperPort scrapingport.ScraperPort,
+	upsertUC *productusecase.UpsertProductsUseCase,
+) *ScrapingModule {
+	repo := scrapingpersistence.NewPostgresJobRepository(db)
+	executeUC := scrapingusecase.NewExecuteScrapingUseCase(repo, sourceRepo, scraperPort, upsertUC)
+	listUC := scrapingusecase.NewListJobsUseCase(repo)
+	getUC := scrapingusecase.NewGetJobUseCase(repo)
+	cancelUC := scrapingusecase.NewCancelJobUseCase(repo)
+	retryUC := scrapingusecase.NewRetryJobUseCase(repo)
+	ctrl := scrapingcontroller.NewJobController(listUC, getUC, cancelUC, retryUC)
 
 	return &ScrapingModule{
-		Controller: scrapecontroller.NewJobController(listUC, getUC, cancelUC, retryUC),
 		Repo:       repo,
+		Controller: ctrl,
 		ExecuteUC:  executeUC,
 	}
 }

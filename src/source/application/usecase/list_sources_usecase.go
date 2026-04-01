@@ -2,12 +2,20 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/source/application/response"
 	"github.com/mercadocercano/webdata-service/src/source/domain/port"
 )
+
+type ListSourcesResult struct {
+	Items      []response.SourceResponse
+	Sources    []response.SourceResponse // alias, kept for test compatibility
+	Total      int
+	Page       int
+	PageSize   int
+	TotalPages int
+}
 
 type ListSourcesUseCase struct {
 	repo port.SourceRepository
@@ -17,35 +25,32 @@ func NewListSourcesUseCase(repo port.SourceRepository) *ListSourcesUseCase {
 	return &ListSourcesUseCase{repo: repo}
 }
 
-type ListSourcesResult struct {
-	Sources  []response.SourceResponse
-	Total    int
-	Page     int
-	PageSize int
-}
-
 func (uc *ListSourcesUseCase) Execute(ctx context.Context, tenantID uuid.UUID, filter port.SourceFilter) (ListSourcesResult, error) {
-	if filter.PageSize <= 0 {
-		filter.PageSize = 20
-	}
-	if filter.Page <= 0 {
+	if filter.Page < 1 {
 		filter.Page = 1
+	}
+	if filter.PageSize < 1 || filter.PageSize > 100 {
+		filter.PageSize = 20
 	}
 
 	sources, total, err := uc.repo.FindAll(ctx, tenantID, filter)
 	if err != nil {
-		return ListSourcesResult{}, fmt.Errorf("listing sources: %w", err)
+		return ListSourcesResult{}, err
 	}
 
-	result := make([]response.SourceResponse, len(sources))
+	items := make([]response.SourceResponse, len(sources))
 	for i, s := range sources {
-		result[i] = response.FromSource(s)
+		items[i] = response.FromSource(s)
 	}
+
+	totalPages := (total + filter.PageSize - 1) / filter.PageSize
 
 	return ListSourcesResult{
-		Sources:  result,
-		Total:    total,
-		Page:     filter.Page,
-		PageSize: filter.PageSize,
+		Items:      items,
+		Sources:    items,
+		Total:      total,
+		Page:       filter.Page,
+		PageSize:   filter.PageSize,
+		TotalPages: totalPages,
 	}, nil
 }

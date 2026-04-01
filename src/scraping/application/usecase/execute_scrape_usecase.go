@@ -2,48 +2,42 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
-	"github.com/google/uuid"
-	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	"github.com/mercadocercano/webdata-service/src/scraping/domain/entity"
+	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 )
 
-// ProductUpserter abstracts the product upsert operation to avoid circular imports.
-type ProductUpserter interface {
-	Execute(ctx context.Context, tenantID, sourceID uuid.UUID, jobID *uuid.UUID, products []scrapeport.RawProduct) (int, error)
-}
-
-type ExecuteScrapeUseCase struct {
+type ExecuteScrapingUseCase struct {
+	jobRepo    scrapingport.ScrapingJobRepository
 	sourceRepo sourceport.SourceRepository
-	jobRepo    scrapeport.ScrapingJobRepository
-	scraper    scrapeport.ScraperPort
-	upserter   ProductUpserter
+	scraper    scrapingport.ScraperPort
+	upsertUC   *productusecase.UpsertProductsUseCase
 }
 
-func NewExecuteScrapeUseCase(
+func NewExecuteScrapingUseCase(
+	jobRepo scrapingport.ScrapingJobRepository,
 	sourceRepo sourceport.SourceRepository,
-	jobRepo scrapeport.ScrapingJobRepository,
-	scraper scrapeport.ScraperPort,
-	upserter ProductUpserter,
-) *ExecuteScrapeUseCase {
-	return &ExecuteScrapeUseCase{
-		sourceRepo: sourceRepo,
+	scraper scrapingport.ScraperPort,
+	upsertUC *productusecase.UpsertProductsUseCase,
+) *ExecuteScrapingUseCase {
+	return &ExecuteScrapingUseCase{
 		jobRepo:    jobRepo,
+		sourceRepo: sourceRepo,
 		scraper:    scraper,
-		upserter:   upserter,
+		upsertUC:   upsertUC,
 	}
 }
 
-func (uc *ExecuteScrapeUseCase) Execute(ctx context.Context) error {
-	job, err := uc.jobRepo.ClaimPendingJob(ctx)
-	if err != nil {
-		return nil // no pending jobs — not an error
-	}
+func (uc *ExecuteScrapingUseCase) ClaimJob(ctx context.Context) (*entity.ScrapingJob, error) {
+	return uc.jobRepo.ClaimPendingJob(ctx)
+}
 
+func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.ScrapingJob) error {
 	if err := job.Start(); err != nil {
-		return fmt.Errorf("starting job %s: %w", job.ID, err)
+		return fmt.Errorf("starting job: %w", err)
 	}
 	if err := uc.jobRepo.Update(ctx, job); err != nil {
 		return fmt.Errorf("updating job to running: %w", err)
@@ -53,35 +47,32 @@ func (uc *ExecuteScrapeUseCase) Execute(ctx context.Context) error {
 	if err != nil {
 		_ = job.Fail("source not found")
 		_ = uc.jobRepo.Update(ctx, job)
-		return nil
+		return err
 	}
 
-	schemaBytes := source.ExtractionSchema.Raw()
-	if schemaBytes == nil {
-		schemaBytes = []byte("{}")
-	}
-	var schema json.RawMessage = schemaBytes
-
-	products, err := uc.scraper.Extract(ctx, source.BaseURL, schema, scrapeport.ExtractOptions{})
+	rawProducts, err := uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{})
 	if err != nil {
-		_ = job.Fail(err.Error())
+		reason := fmt.Sprintf("extract failed: %v", err)
+		_ = job.Fail(reason)
 		_ = uc.jobRepo.Update(ctx, job)
-		source.RecordFailure(err.Error())
+		source.RecordFailure(reason)
 		_ = uc.sourceRepo.Update(ctx, source)
-		return nil
+		return err
 	}
 
-	saved, err := uc.upserter.Execute(ctx, job.TenantID, job.SourceID, &job.ID, products)
-	if err != nil {
-		_ = job.Fail(err.Error())
-		_ = uc.jobRepo.Update(ctx, job)
-		return nil
+	created, updated, upsertErr := uc.upsertUC.ExecuteDetailed(ctx, job.TenantID, job.SourceID, &job.ID, rawProducts)
+
+	found := len(rawProducts)
+	saved := created + updated
+	if upsertErr != nil {
+		_ = job.Fail(upsertErr.Error())
+		source.RecordFailure(upsertErr.Error())
+	} else {
+		_ = job.Complete(found, saved)
+		source.RecordSuccess()
 	}
 
-	_ = job.Complete(len(products), saved)
 	_ = uc.jobRepo.Update(ctx, job)
-	source.RecordSuccess()
 	_ = uc.sourceRepo.Update(ctx, source)
-
-	return nil
+	return upsertErr
 }

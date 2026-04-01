@@ -14,7 +14,7 @@ type ProductResponse struct {
 	SourceID           uuid.UUID       `json:"source_id"`
 	JobID              *uuid.UUID      `json:"job_id,omitempty"`
 	Title              string          `json:"title"`
-	Price              *float64        `json:"price"`
+	Price              *float64        `json:"price,omitempty"`
 	Currency           string          `json:"currency"`
 	OriginalPrice      *float64        `json:"original_price,omitempty"`
 	URL                string          `json:"url"`

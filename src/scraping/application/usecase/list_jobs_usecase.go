@@ -2,45 +2,53 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/scraping/application/response"
-	"github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 )
 
-type ListJobsUseCase struct {
-	repo port.ScrapingJobRepository
+type ListJobsResult struct {
+	Items      []response.JobResponse
+	Total      int
+	Page       int
+	PageSize   int
+	TotalPages int
 }
 
-func NewListJobsUseCase(repo port.ScrapingJobRepository) *ListJobsUseCase {
+type ListJobsUseCase struct {
+	repo scrapingport.ScrapingJobRepository
+}
+
+func NewListJobsUseCase(repo scrapingport.ScrapingJobRepository) *ListJobsUseCase {
 	return &ListJobsUseCase{repo: repo}
 }
 
-type ListJobsResult struct {
-	Jobs     []response.JobResponse
-	Total    int
-	Page     int
-	PageSize int
-}
-
-func (uc *ListJobsUseCase) Execute(ctx context.Context, tenantID uuid.UUID, filter port.JobFilter) (ListJobsResult, error) {
-	if filter.PageSize <= 0 {
-		filter.PageSize = 20
-	}
-	if filter.Page <= 0 {
+func (uc *ListJobsUseCase) Execute(ctx context.Context, tenantID uuid.UUID, filter scrapingport.JobFilter) (ListJobsResult, error) {
+	if filter.Page < 1 {
 		filter.Page = 1
+	}
+	if filter.PageSize < 1 || filter.PageSize > 100 {
+		filter.PageSize = 20
 	}
 
 	jobs, total, err := uc.repo.FindAll(ctx, tenantID, filter)
 	if err != nil {
-		return ListJobsResult{}, fmt.Errorf("listing jobs: %w", err)
+		return ListJobsResult{}, err
 	}
 
-	result := make([]response.JobResponse, len(jobs))
+	items := make([]response.JobResponse, len(jobs))
 	for i, j := range jobs {
-		result[i] = response.FromJob(j)
+		items[i] = response.FromJob(j)
 	}
 
-	return ListJobsResult{Jobs: result, Total: total, Page: filter.Page, PageSize: filter.PageSize}, nil
+	totalPages := (total + filter.PageSize - 1) / filter.PageSize
+
+	return ListJobsResult{
+		Items:      items,
+		Total:      total,
+		Page:       filter.Page,
+		PageSize:   filter.PageSize,
+		TotalPages: totalPages,
+	}, nil
 }

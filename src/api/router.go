@@ -4,62 +4,62 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	srccontroller "github.com/mercadocercano/webdata-service/src/source/infrastructure/controller"
-	scrapecontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
-	prdcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+	sourcecontroller "github.com/mercadocercano/webdata-service/src/source/infrastructure/controller"
+	scrapingcontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
+	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
 	statscontroller "github.com/mercadocercano/webdata-service/src/stats/infrastructure/controller"
-	sharedmw "github.com/mercadocercano/webdata-service/src/shared/middleware"
+	"github.com/mercadocercano/webdata-service/src/shared/middleware"
 )
 
 func NewRouter(
-	sourceCtrl *srccontroller.SourceController,
-	jobCtrl *scrapecontroller.JobController,
-	productCtrl *prdcontroller.ProductController,
+	sourceCtrl *sourcecontroller.SourceController,
+	jobCtrl *scrapingcontroller.JobController,
+	productCtrl *productcontroller.ProductController,
 	statsCtrl *statscontroller.StatsController,
 ) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
+	r.Use(chimiddleware.Recoverer)
+	r.Use(chimiddleware.RequestID)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck
+		middleware.JSONResponse(w, http.StatusOK, map[string]string{"status": "ok", "service": "webdata-service"})
 	})
 
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(sharedmw.TenantMiddleware)
+	r.Route("/webdata/api/v1", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware)
+		r.Use(middleware.TenantMiddleware)
 
 		// Sources
 		r.Route("/sources", func(r chi.Router) {
-			r.Get("/", sourceCtrl.List)
-			r.Post("/", sourceCtrl.Create)
-			r.Get("/{id}", sourceCtrl.Get)
-			r.Patch("/{id}", sourceCtrl.Update)
-			r.Delete("/{id}", sourceCtrl.Delete)
-			r.Post("/{id}/trigger", sourceCtrl.Trigger)
+			r.Get("/", sourceCtrl.ListSources)
+			r.Post("/", sourceCtrl.CreateSource)
+			r.Get("/{id}", sourceCtrl.GetSource)
+			r.Patch("/{id}", sourceCtrl.UpdateSource)
+			r.Delete("/{id}", sourceCtrl.DeleteSource)
+			r.Post("/{id}/trigger", sourceCtrl.TriggerScrape)
 		})
 
 		// Jobs
 		r.Route("/jobs", func(r chi.Router) {
-			r.Get("/", jobCtrl.List)
-			r.Get("/{id}", jobCtrl.Get)
-			r.Post("/{id}/cancel", jobCtrl.Cancel)
-			r.Post("/{id}/retry", jobCtrl.Retry)
+			r.Get("/", jobCtrl.ListJobs)
+			r.Get("/{id}", jobCtrl.GetJob)
+			r.Post("/{id}/cancel", jobCtrl.CancelJob)
+			r.Post("/{id}/retry", jobCtrl.RetryJob)
 		})
 
 		// Products
 		r.Route("/products", func(r chi.Router) {
-			r.Get("/", productCtrl.List)
-			r.Get("/{id}", productCtrl.Get)
-			r.Get("/{id}/price-history", productCtrl.PriceHistory)
+			r.Get("/", productCtrl.ListProducts)
+			r.Get("/{id}", productCtrl.GetProduct)
+			r.Get("/{id}/price-history", productCtrl.GetPriceHistory)
 		})
 
 		// Stats
-		r.Get("/stats", statsCtrl.GetStats)
-		r.Get("/stats/sources", statsCtrl.GetSourceStats)
+		r.Route("/stats", func(r chi.Router) {
+			r.Get("/", statsCtrl.GetStats)
+			r.Get("/sources", statsCtrl.GetSourceStats)
+		})
 	})
 
 	return r

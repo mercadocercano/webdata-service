@@ -2,13 +2,20 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/application/request"
 	"github.com/mercadocercano/webdata-service/src/product/application/response"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
 )
+
+type ListProductsResult struct {
+	Items      []response.ProductResponse
+	Total      int
+	Page       int
+	PageSize   int
+	TotalPages int
+}
 
 type ListProductsUseCase struct {
 	repo port.ProductRepository
@@ -18,19 +25,12 @@ func NewListProductsUseCase(repo port.ProductRepository) *ListProductsUseCase {
 	return &ListProductsUseCase{repo: repo}
 }
 
-type ListProductsResult struct {
-	Products []response.ProductResponse
-	Total    int
-	Page     int
-	PageSize int
-}
-
 func (uc *ListProductsUseCase) Execute(ctx context.Context, tenantID uuid.UUID, req request.ListProductsRequest) (ListProductsResult, error) {
-	if req.PageSize <= 0 {
-		req.PageSize = 20
-	}
-	if req.Page <= 0 {
+	if req.Page < 1 {
 		req.Page = 1
+	}
+	if req.PageSize < 1 || req.PageSize > 100 {
+		req.PageSize = 20
 	}
 
 	filter := port.ProductFilter{
@@ -49,13 +49,21 @@ func (uc *ListProductsUseCase) Execute(ctx context.Context, tenantID uuid.UUID, 
 
 	products, total, err := uc.repo.FindAll(ctx, tenantID, filter)
 	if err != nil {
-		return ListProductsResult{}, fmt.Errorf("listing products: %w", err)
+		return ListProductsResult{}, err
 	}
 
-	result := make([]response.ProductResponse, len(products))
+	items := make([]response.ProductResponse, len(products))
 	for i, p := range products {
-		result[i] = response.FromProduct(p)
+		items[i] = response.FromProduct(p)
 	}
 
-	return ListProductsResult{Products: result, Total: total, Page: req.Page, PageSize: req.PageSize}, nil
+	totalPages := (total + req.PageSize - 1) / req.PageSize
+
+	return ListProductsResult{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: totalPages,
+	}, nil
 }

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/application/response"
@@ -18,13 +17,9 @@ func NewGetPriceHistoryUseCase(repo port.ProductRepository) *GetPriceHistoryUseC
 }
 
 func (uc *GetPriceHistoryUseCase) Execute(ctx context.Context, tenantID, productID uuid.UUID) ([]response.PriceHistoryResponse, error) {
-	if _, err := uc.repo.FindByID(ctx, tenantID, productID); err != nil {
-		return nil, fmt.Errorf("product not found: %w", err)
-	}
-
 	records, err := uc.repo.FindPriceHistory(ctx, tenantID, productID)
 	if err != nil {
-		return nil, fmt.Errorf("fetching price history: %w", err)
+		return nil, err
 	}
 
 	result := make([]response.PriceHistoryResponse, len(records))

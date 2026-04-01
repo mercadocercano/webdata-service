@@ -1,15 +1,18 @@
 package request
 
+import "encoding/json"
+
 type UpdateSourceRequest struct {
-	Name             *string `json:"name"`
-	BaseURL          *string `json:"base_url"`
-	Category         *string `json:"category"`
-	City             *string `json:"city"`
-	Priority         *string `json:"priority"`
-	FirecrawlMethod  *string `json:"firecrawl_method"`
-	CronExpression   *string `json:"cron_expression"`
-	Notes            *string `json:"notes"`
-	IsActive         *bool   `json:"is_active"`
-	ExtractionSchema []byte  `json:"extraction_schema"`
-	CrawlConfigRaw   []byte  `json:"crawl_config"`
+	Name             *string         `json:"name,omitempty"`
+	BaseURL          *string         `json:"base_url,omitempty"`
+	Category         *string         `json:"category,omitempty"`
+	City             *string         `json:"city,omitempty"`
+	Priority         *string         `json:"priority,omitempty"`
+	Tier             *int            `json:"tier,omitempty"`
+	FirecrawlMethod  *string         `json:"firecrawl_method,omitempty"`
+	CronExpression   *string         `json:"cron_expression,omitempty"`
+	Notes            *string         `json:"notes,omitempty"`
+	IsActive         *bool           `json:"is_active,omitempty"`
+	ExtractionSchema json.RawMessage `json:"extraction_schema,omitempty"`
+	CrawlConfig      json.RawMessage `json:"crawl_config,omitempty"`
 }

@@ -3,52 +3,54 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
+
+	"github.com/mercadocercano/webdata-service/src/scraping/domain/exception"
+	scrapingusecase "github.com/mercadocercano/webdata-service/src/scraping/application/usecase"
 )
 
 const workerPollInterval = 5 * time.Second
 
-type Executor interface {
-	Execute(ctx context.Context) error
-}
-
 type WorkerPool struct {
-	executor   Executor
-	numWorkers int
+	executeUC   *scrapingusecase.ExecuteScrapingUseCase
+	workerCount int
 }
 
-func NewWorkerPool(executor Executor, numWorkers int) *WorkerPool {
-	if numWorkers <= 0 {
-		numWorkers = 3
-	}
-	return &WorkerPool{executor: executor, numWorkers: numWorkers}
+func NewWorkerPool(executeUC *scrapingusecase.ExecuteScrapingUseCase, workerCount int) *WorkerPool {
+	return &WorkerPool{executeUC: executeUC, workerCount: workerCount}
 }
 
 func (wp *WorkerPool) Start(ctx context.Context) {
-	var wg sync.WaitGroup
-	for i := 0; i < wp.numWorkers; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-			wp.runWorker(ctx, workerID)
-		}(i)
+	for i := 0; i < wp.workerCount; i++ {
+		go wp.runWorker(ctx, i)
 	}
-	wg.Wait()
+	<-ctx.Done()
 }
 
-func (wp *WorkerPool) runWorker(ctx context.Context, id int) {
-	ticker := time.NewTicker(workerPollInterval)
-	defer ticker.Stop()
-
+func (wp *WorkerPool) runWorker(ctx context.Context, workerID int) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			if err := wp.executor.Execute(ctx); err != nil {
-				fmt.Printf("worker %d: error executing job: %v\n", id, err)
-			}
+		default:
+			wp.processNext(ctx, workerID)
 		}
+	}
+}
+
+func (wp *WorkerPool) processNext(ctx context.Context, workerID int) {
+	job, err := wp.executeUC.ClaimJob(ctx)
+	if err != nil {
+		if _, ok := err.(exception.JobNotFoundError); ok {
+			time.Sleep(workerPollInterval)
+			return
+		}
+		fmt.Printf("[worker %d] claim error: %v\n", workerID, err)
+		time.Sleep(workerPollInterval)
+		return
+	}
+
+	if err := wp.executeUC.Execute(ctx, job); err != nil {
+		fmt.Printf("[worker %d] execute error for job %s: %v\n", workerID, job.ID, err)
 	}
 }

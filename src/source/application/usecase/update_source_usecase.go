@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/source/application/request"
@@ -22,7 +21,7 @@ func NewUpdateSourceUseCase(repo port.SourceRepository) *UpdateSourceUseCase {
 func (uc *UpdateSourceUseCase) Execute(ctx context.Context, tenantID, id uuid.UUID, req request.UpdateSourceRequest) (response.SourceResponse, error) {
 	source, err := uc.repo.FindByID(ctx, tenantID, id)
 	if err != nil {
-		return response.SourceResponse{}, fmt.Errorf("source not found: %w", err)
+		return response.SourceResponse{}, err
 	}
 
 	if req.Name != nil {
@@ -37,13 +36,6 @@ func (uc *UpdateSourceUseCase) Execute(ctx context.Context, tenantID, id uuid.UU
 	if req.City != nil {
 		source.City = *req.City
 	}
-	if req.Priority != nil {
-		p, err := value_object.NewSourcePriority(*req.Priority)
-		if err != nil {
-			return response.SourceResponse{}, err
-		}
-		source.Priority = p
-	}
 	if req.FirecrawlMethod != nil {
 		source.FirecrawlMethod = *req.FirecrawlMethod
 	}
@@ -56,10 +48,23 @@ func (uc *UpdateSourceUseCase) Execute(ctx context.Context, tenantID, id uuid.UU
 	if req.IsActive != nil {
 		source.IsActive = *req.IsActive
 	}
-
-	if err := uc.repo.Update(ctx, source); err != nil {
-		return response.SourceResponse{}, fmt.Errorf("updating source: %w", err)
+	if req.Priority != nil {
+		p, pErr := value_object.NewSourcePriority(*req.Priority)
+		if pErr != nil {
+			return response.SourceResponse{}, pErr
+		}
+		source.Priority = p
+	}
+	if req.Tier != nil {
+		t, tErr := value_object.NewSourceTier(*req.Tier)
+		if tErr != nil {
+			return response.SourceResponse{}, tErr
+		}
+		source.Tier = t
 	}
 
+	if err := uc.repo.Update(ctx, source); err != nil {
+		return response.SourceResponse{}, err
+	}
 	return response.FromSource(source), nil
 }

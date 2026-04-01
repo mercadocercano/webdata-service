@@ -125,11 +125,20 @@ func (r *PostgresJobRepository) ClaimPendingJob(ctx context.Context) (*entity.Sc
 	}
 	defer tx.Rollback()
 
+	// Round-robin tenant selection: pick a random tenant with pending jobs, then
+	// claim the oldest job from that tenant. This prevents starvation across tenants
+	// while preserving SKIP LOCKED concurrency safety.
 	query := `SELECT id, tenant_id, source_id, status, trigger_type, firecrawl_job_id,
 		products_found, products_saved, error_message, started_at, completed_at,
 		created_at, retry_count, max_retries
 		FROM webdata_scraping_jobs
 		WHERE status='pending'
+		AND tenant_id = (
+			SELECT tenant_id FROM webdata_scraping_jobs
+			WHERE status='pending'
+			ORDER BY RANDOM()
+			LIMIT 1
+		)
 		ORDER BY created_at ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED`

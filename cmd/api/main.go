@@ -28,6 +28,11 @@ func main() {
 	dbName := getEnv("DB_NAME", "webdata")
 	firecrawlKey := getEnv("FIRECRAWL_API_KEY", "")
 
+	if os.Getenv("JWT_SECRET") == "" {
+		fmt.Fprintln(os.Stderr, "JWT_SECRET env var is required")
+		os.Exit(1)
+	}
+
 	connStr := database.BuildConnString(dbHost, dbPort, dbUser, dbPass, dbName)
 	db, err := database.NewPostgresDB(connStr)
 	if err != nil {

@@ -27,30 +27,27 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 	<-ctx.Done()
 }
 
+// runWorker uses a Ticker to poll for jobs at a fixed interval, ensuring
+// the goroutine responds promptly to context cancellation (graceful drain).
 func (wp *WorkerPool) runWorker(ctx context.Context, workerID int) {
+	ticker := time.NewTicker(workerPollInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-			wp.processNext(ctx, workerID)
+		case <-ticker.C:
+			job, err := wp.executeUC.ClaimJob(ctx)
+			if err != nil {
+				if _, ok := err.(exception.JobNotFoundError); !ok {
+					fmt.Printf("[worker %d] claim error: %v\n", workerID, err)
+				}
+				continue
+			}
+			if err := wp.executeUC.Execute(ctx, job); err != nil {
+				fmt.Printf("[worker %d] execute error for job %s: %v\n", workerID, job.ID, err)
+			}
 		}
-	}
-}
-
-func (wp *WorkerPool) processNext(ctx context.Context, workerID int) {
-	job, err := wp.executeUC.ClaimJob(ctx)
-	if err != nil {
-		if _, ok := err.(exception.JobNotFoundError); ok {
-			time.Sleep(workerPollInterval)
-			return
-		}
-		fmt.Printf("[worker %d] claim error: %v\n", workerID, err)
-		time.Sleep(workerPollInterval)
-		return
-	}
-
-	if err := wp.executeUC.Execute(ctx, job); err != nil {
-		fmt.Printf("[worker %d] execute error for job %s: %v\n", workerID, job.ID, err)
 	}
 }

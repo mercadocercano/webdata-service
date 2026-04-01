@@ -177,9 +177,9 @@ func (r *PostgresProductRepository) SavePriceRecord(ctx context.Context, record 
 func (r *PostgresProductRepository) FindPriceHistory(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.PriceRecord, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT product_id, price, recorded_at FROM webdata_price_history
-		WHERE product_id=$1
+		WHERE product_id=$1 AND tenant_id=$2
 		ORDER BY recorded_at DESC`,
-		productID,
+		productID, tenantID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("finding price history: %w", err)

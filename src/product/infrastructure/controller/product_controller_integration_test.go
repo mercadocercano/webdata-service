@@ -3,9 +3,9 @@
 // TEST-ID: T-INT-06
 // Product controller E2E integration test.
 // Seeds a source + products via UpsertProductsUseCase, then exercises:
-//   GET /webdata/api/v1/products/
-//   GET /webdata/api/v1/products/:id
-//   GET /webdata/api/v1/products/:id/price-history
+//   GET /api/v1/products/
+//   GET /api/v1/products/:id
+//   GET /api/v1/products/:id/price-history
 //
 // Requires a running PostgreSQL with migrated webdata schema.
 // Set WEBDATA_TEST_DB_URL or individual DB_* env vars.
@@ -179,7 +179,7 @@ func TestProductController_E2E_ListGetPriceHistory(t *testing.T) {
 	assert.Equal(t, 2, saved, "should have upserted 2 products")
 
 	client := modules.srv.Client()
-	baseProducts := modules.srv.URL + "/webdata/api/v1/products"
+	baseProducts := modules.srv.URL + "/api/v1/products"
 
 	// ── 1. List products ───────────────────────────────────────────────────
 	resp := doGet(t, client, baseProducts+"/", token, tenantID.String())
@@ -251,7 +251,7 @@ func TestProductController_E2E_PriceHistoryTracking(t *testing.T) {
 	sourceID := seedSource(t, db, tenantID)
 	token := makeTestJWT(t, tenantID)
 	client := modules.srv.Client()
-	baseProducts := modules.srv.URL + "/webdata/api/v1/products"
+	baseProducts := modules.srv.URL + "/api/v1/products"
 
 	// First upsert — initial price
 	price1 := 2000.00

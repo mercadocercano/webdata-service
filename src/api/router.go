@@ -26,7 +26,7 @@ func NewRouter(
 		middleware.JSONResponse(w, http.StatusOK, map[string]string{"status": "ok", "service": "webdata-service"})
 	})
 
-	r.Route("/webdata/api/v1", func(r chi.Router) {
+	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware)
 		r.Use(middleware.TenantMiddleware)
 

@@ -143,7 +143,7 @@ func TestSourceController_E2E_CreateListGetUpdateDeleteTrigger(t *testing.T) {
 
 	client := srv.Client()
 	token := makeTestJWT(t, tenantID)
-	base := srv.URL + "/webdata/api/v1/sources"
+	base := srv.URL + "/api/v1/sources"
 
 	// ── 1. Create ──────────────────────────────────────────────────────────
 	createBody, _ := json.Marshal(map[string]any{
@@ -237,7 +237,7 @@ func TestSourceController_E2E_TenantIsolation(t *testing.T) {
 	client := srv.Client()
 	tokenA := makeTestJWT(t, tenantA)
 	tokenB := makeTestJWT(t, tenantB)
-	base := srv.URL + "/webdata/api/v1/sources"
+	base := srv.URL + "/api/v1/sources"
 
 	// Create source for tenant A
 	body, _ := json.Marshal(map[string]any{
@@ -268,7 +268,7 @@ func TestSourceController_E2E_MissingTenantHeader(t *testing.T) {
 	token := makeTestJWT(t, tenantID)
 
 	// Request with auth but without X-Tenant-ID
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/webdata/api/v1/sources/", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/sources/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
@@ -282,7 +282,7 @@ func TestSourceController_E2E_MissingAuthHeader(t *testing.T) {
 	client := srv.Client()
 	tenantID := newTenantID(t)
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/webdata/api/v1/sources/", nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/sources/", nil)
 	req.Header.Set("X-Tenant-ID", tenantID.String())
 	resp, err := client.Do(req)
 	require.NoError(t, err)

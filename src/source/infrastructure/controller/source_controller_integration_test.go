@@ -17,7 +17,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/mercadocercano/webdata-service/src/api"
@@ -29,6 +31,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const testJWTSecret = "test-jwt-secret-for-integration-tests"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,6 +58,8 @@ func testDB(t *testing.T) *sql.DB {
 
 func newTestServer(t *testing.T, db *sql.DB) *httptest.Server {
 	t.Helper()
+	t.Setenv("JWT_SECRET", testJWTSecret)
+
 	productModule := productconfig.NewProductModule(db)
 	sourceModule := sourceconfig.NewSourceModule(db, nil)
 	firecrawl := adapter.NewFirecrawlAdapter("test-key-noop")
@@ -70,6 +76,20 @@ func newTestServer(t *testing.T, db *sql.DB) *httptest.Server {
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func makeTestJWT(t *testing.T, tenantID uuid.UUID) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"user_id":   uuid.New().String(),
+		"tenant_id": tenantID.String(),
+		"role":      "admin",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(testJWTSecret))
+	require.NoError(t, err)
+	return signed
 }
 
 func newTenantID(t *testing.T) uuid.UUID {
@@ -93,6 +113,26 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+func doRequest(t *testing.T, client *http.Client, method, url, token, tenantID string, body []byte) *http.Response {
+	t.Helper()
+	var req *http.Request
+	var err error
+	if body != nil {
+		req, err = http.NewRequest(method, url, bytes.NewReader(body))
+	} else {
+		req, err = http.NewRequest(method, url, nil)
+	}
+	require.NoError(t, err)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Tenant-ID", tenantID)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
 // ─── T-INT-05: Source controller E2E ─────────────────────────────────────
 
 func TestSourceController_E2E_CreateListGetUpdateDeleteTrigger(t *testing.T) {
@@ -102,10 +142,11 @@ func TestSourceController_E2E_CreateListGetUpdateDeleteTrigger(t *testing.T) {
 	t.Cleanup(func() { cleanupSources(t, db, tenantID) })
 
 	client := srv.Client()
-	base := srv.URL + "/api/v1/sources"
+	token := makeTestJWT(t, tenantID)
+	base := srv.URL + "/webdata/api/v1/sources"
 
 	// ── 1. Create ──────────────────────────────────────────────────────────
-	createBody := map[string]any{
+	createBody, _ := json.Marshal(map[string]any{
 		"name":             "Test Source NEA",
 		"base_url":         "https://example.com",
 		"category":         "supermercado",
@@ -116,95 +157,68 @@ func TestSourceController_E2E_CreateListGetUpdateDeleteTrigger(t *testing.T) {
 		"firecrawl_method": "extract",
 		"cron_expression":  "0 6 * * 1",
 		"notes":            "integration test source",
-	}
-	body, _ := json.Marshal(createBody)
-	req, _ := http.NewRequest(http.MethodPost, base+"/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err := client.Do(req)
-	require.NoError(t, err)
+	})
+	resp := doRequest(t, client, http.MethodPost, base+"/", token, tenantID.String(), createBody)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode, "POST /sources should return 201")
 
-	var created map[string]any
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
+	var createResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&createResp))
 	resp.Body.Close()
 
-	sourceID, ok := created["id"].(string)
-	require.True(t, ok, "response should contain id")
+	data, ok := createResp["data"].(map[string]any)
+	require.True(t, ok, "response should have data object")
+	sourceID, ok := data["id"].(string)
+	require.True(t, ok, "data should contain id")
 
 	// ── 2. List ────────────────────────────────────────────────────────────
-	req, _ = http.NewRequest(http.MethodGet, base+"/", nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = doRequest(t, client, http.MethodGet, base+"/", token, tenantID.String(), nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "GET /sources should return 200")
 
 	var listResp map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&listResp))
 	resp.Body.Close()
 
-	data, ok := listResp["data"].([]any)
+	items, ok := listResp["data"].([]any)
 	require.True(t, ok, "response should have data array")
-	assert.Len(t, data, 1, "should list 1 source for this tenant")
+	assert.Len(t, items, 1, "should list 1 source for this tenant")
 
 	// ── 3. Get by ID ───────────────────────────────────────────────────────
-	req, _ = http.NewRequest(http.MethodGet, base+"/"+sourceID, nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = doRequest(t, client, http.MethodGet, base+"/"+sourceID, token, tenantID.String(), nil)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "GET /sources/:id should return 200")
 
-	var got map[string]any
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	var getResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&getResp))
 	resp.Body.Close()
+
+	got := getResp["data"].(map[string]any)
 	assert.Equal(t, "Test Source NEA", got["name"])
 
 	// ── 4. Update ──────────────────────────────────────────────────────────
-	updateBody := map[string]any{"notes": "updated via integration test"}
-	body, _ = json.Marshal(updateBody)
-	req, _ = http.NewRequest(http.MethodPatch, base+"/"+sourceID, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	updateBody, _ := json.Marshal(map[string]any{"notes": "updated via integration test"})
+	resp = doRequest(t, client, http.MethodPatch, base+"/"+sourceID, token, tenantID.String(), updateBody)
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "PATCH /sources/:id should return 200")
 
-	var updated map[string]any
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updated))
+	var updateResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updateResp))
 	resp.Body.Close()
+	updated := updateResp["data"].(map[string]any)
 	assert.Equal(t, "updated via integration test", updated["notes"])
 
 	// ── 5. Trigger scrape ──────────────────────────────────────────────────
-	req, _ = http.NewRequest(http.MethodPost, base+"/"+sourceID+"/trigger", nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	// Trigger creates a job — expects 201 or 422 (if Firecrawl key is noop)
+	resp = doRequest(t, client, http.MethodPost, base+"/"+sourceID+"/trigger", token, tenantID.String(), nil)
+	// Trigger creates a job — 201 (success) or 422 (Firecrawl noop key)
 	assert.True(t,
 		resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusUnprocessableEntity,
 		"POST /sources/:id/trigger should return 201 or 422, got %d", resp.StatusCode)
 	resp.Body.Close()
 
 	// ── 6. Delete ──────────────────────────────────────────────────────────
-	req, _ = http.NewRequest(http.MethodDelete, base+"/"+sourceID, nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	resp = doRequest(t, client, http.MethodDelete, base+"/"+sourceID, token, tenantID.String(), nil)
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "DELETE /sources/:id should return 204")
 	resp.Body.Close()
 
-	// ── 7. Verify deleted (soft-delete: should return not found) ───────────
-	req, _ = http.NewRequest(http.MethodGet, base+"/"+sourceID, nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-
-	resp, err = client.Do(req)
-	require.NoError(t, err)
+	// ── 7. Verify deleted → 404 ────────────────────────────────────────────
+	resp = doRequest(t, client, http.MethodGet, base+"/"+sourceID, token, tenantID.String(), nil)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "GET after delete should return 404")
 	resp.Body.Close()
 }
@@ -221,27 +235,22 @@ func TestSourceController_E2E_TenantIsolation(t *testing.T) {
 	})
 
 	client := srv.Client()
-	base := srv.URL + "/api/v1/sources"
+	tokenA := makeTestJWT(t, tenantA)
+	tokenB := makeTestJWT(t, tenantB)
+	base := srv.URL + "/webdata/api/v1/sources"
 
 	// Create source for tenant A
 	body, _ := json.Marshal(map[string]any{
 		"name": "Tenant A Source", "base_url": "https://a.com",
 		"category": "supermercado", "source_type": "ecommerce", "tier": 1, "priority": "high",
 	})
-	req, _ := http.NewRequest(http.MethodPost, base+"/", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Tenant-ID", tenantA.String())
-	resp, err := client.Do(req)
-	require.NoError(t, err)
+	resp := doRequest(t, client, http.MethodPost, base+"/", tokenA, tenantA.String(), body)
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	resp.Body.Close()
 
 	// Tenant B should see empty list
-	req, _ = http.NewRequest(http.MethodGet, base+"/", nil)
-	req.Header.Set("X-Tenant-ID", tenantB.String())
-	resp, err = client.Do(req)
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp = doRequest(t, client, http.MethodGet, base+"/", tokenB, tenantB.String(), nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var listResp map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&listResp))
@@ -255,10 +264,28 @@ func TestSourceController_E2E_MissingTenantHeader(t *testing.T) {
 	db := testDB(t)
 	srv := newTestServer(t, db)
 	client := srv.Client()
+	tenantID := newTenantID(t)
+	token := makeTestJWT(t, tenantID)
 
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/sources/", nil)
+	// Request with auth but without X-Tenant-ID
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/webdata/api/v1/sources/", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "missing X-Tenant-ID should return 400")
+	resp.Body.Close()
+}
+
+func TestSourceController_E2E_MissingAuthHeader(t *testing.T) {
+	db := testDB(t)
+	srv := newTestServer(t, db)
+	client := srv.Client()
+	tenantID := newTenantID(t)
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/webdata/api/v1/sources/", nil)
+	req.Header.Set("X-Tenant-ID", tenantID.String())
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, "missing Authorization should return 401")
 	resp.Body.Close()
 }

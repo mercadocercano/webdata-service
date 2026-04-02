@@ -115,3 +115,39 @@ func TestSource_HealthScore_DecreasesOnFailures(t *testing.T) {
 	// 1 success, 2 failures out of 3 runs → health = 1/3 ≈ 0.33
 	assert.Less(t, s.HealthScore, 1.00)
 }
+
+func TestSource_RecordFailure_SetsExponentialBackoff(t *testing.T) {
+	params := aValidSource()
+	s, _ := entity.NewSource(params)
+
+	s.RecordFailure("firecrawl API error 429")
+
+	// Primer fallo: backoff = 5min * 2^0 = 5min
+	assert.NotNil(t, s.NextRunAt)
+	assert.True(t, s.NextRunAt.After(s.UpdatedAt))
+	assert.Equal(t, 1, s.ConsecutiveFailures)
+	assert.True(t, s.IsActive, "no debe desactivarse con el primer fallo")
+}
+
+func TestSource_RecordFailure_CircuitBreaker_DeactivatesAfterThreshold(t *testing.T) {
+	params := aValidSource()
+	s, _ := entity.NewSource(params)
+
+	for i := 0; i < 5; i++ {
+		s.RecordFailure("firecrawl API error 402: payment required")
+	}
+
+	assert.False(t, s.IsActive, "debe desactivarse tras 5 fallos consecutivos")
+	assert.Equal(t, 5, s.ConsecutiveFailures)
+}
+
+func TestSource_RecordSuccess_ResetConsecutiveFailures(t *testing.T) {
+	params := aValidSource()
+	s, _ := entity.NewSource(params)
+
+	s.RecordFailure("error")
+	s.RecordFailure("error")
+	s.RecordSuccess()
+
+	assert.Equal(t, 0, s.ConsecutiveFailures)
+}

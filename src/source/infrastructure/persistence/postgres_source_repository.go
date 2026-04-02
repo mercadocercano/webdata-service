@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mercadocercano/webdata-service/src/shared/database"
 	"github.com/mercadocercano/webdata-service/src/source/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/source/domain/exception"
 	"github.com/mercadocercano/webdata-service/src/source/domain/port"
@@ -42,9 +43,9 @@ func (r *PostgresSourceRepository) Save(ctx context.Context, s *entity.Source) e
 
 func (r *PostgresSourceRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.Source, error) {
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, is_active,
+		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
-		last_run_at, last_success_at, last_failure_reason, notes, created_at, updated_at
+		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources WHERE tenant_id=$1 AND id=$2 AND is_active=true`
 
 	row := r.db.QueryRowContext(ctx, query, tenantID, id)
@@ -62,9 +63,7 @@ func (r *PostgresSourceRepository) FindAll(ctx context.Context, tenantID uuid.UU
 	}
 	offset := (page - 1) * pageSize
 
-	where := "WHERE tenant_id=$1"
-	args := []interface{}{tenantID}
-	argIdx := 2
+	where, args, argIdx := database.TenantWhereClause(tenantID)
 
 	if filter.IsActive != nil {
 		where += fmt.Sprintf(" AND is_active=$%d", argIdx)
@@ -84,9 +83,9 @@ func (r *PostgresSourceRepository) FindAll(ctx context.Context, tenantID uuid.UU
 	}
 
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, is_active,
+		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
-		last_run_at, last_success_at, last_failure_reason, notes, created_at, updated_at
+		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources ` + where +
 		fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
@@ -113,17 +112,17 @@ func (r *PostgresSourceRepository) Update(ctx context.Context, s *entity.Source)
 	query := `UPDATE webdata_sources SET
 		name=$1, base_url=$2, category=$3, source_type=$4, city=$5,
 		priority=$6, tier=$7, firecrawl_method=$8, cron_expression=$9,
-		is_active=$10, health_score=$11, total_runs=$12, successful_runs=$13,
-		failed_runs=$14, last_run_at=$15, last_success_at=$16,
-		last_failure_reason=$17, notes=$18, updated_at=$19
-		WHERE tenant_id=$20 AND id=$21`
+		next_run_at=$10, is_active=$11, health_score=$12, total_runs=$13, successful_runs=$14,
+		failed_runs=$15, last_run_at=$16, last_success_at=$17,
+		last_failure_reason=$18, consecutive_failures=$19, notes=$20, updated_at=$21
+		WHERE tenant_id=$22 AND id=$23`
 
 	_, err := r.db.ExecContext(ctx, query,
 		s.Name, s.BaseURL, s.Category, s.SourceType, s.City,
 		s.Priority.Value(), s.Tier.Value(), s.FirecrawlMethod, s.CronExpression,
-		s.IsActive, s.HealthScore, s.TotalRuns, s.SuccessfulRuns,
+		s.NextRunAt, s.IsActive, s.HealthScore, s.TotalRuns, s.SuccessfulRuns,
 		s.FailedRuns, s.LastRunAt, s.LastSuccessAt,
-		s.LastFailureReason, s.Notes, s.UpdatedAt,
+		s.LastFailureReason, s.ConsecutiveFailures, s.Notes, s.UpdatedAt,
 		s.TenantID, s.ID,
 	)
 	if err != nil {
@@ -147,9 +146,9 @@ func (r *PostgresSourceRepository) Delete(ctx context.Context, tenantID, id uuid
 
 func (r *PostgresSourceRepository) FindDueForScraping(ctx context.Context) ([]*entity.Source, error) {
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, is_active,
+		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
-		last_run_at, last_success_at, last_failure_reason, notes, created_at, updated_at
+		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources
 		WHERE is_active=true AND cron_expression != ''
 		AND (next_run_at IS NULL OR next_run_at <= NOW())`
@@ -175,14 +174,14 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 	var s entity.Source
 	var priorityStr string
 	var tierVal int
-	var lastRunAt, lastSuccessAt sql.NullTime
+	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
 	var lastFailureReason, city, cronExpr, notes sql.NullString
 
 	err := row.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &s.IsActive,
+		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
-		&lastRunAt, &lastSuccessAt, &lastFailureReason, &notes, &s.CreatedAt, &s.UpdatedAt,
+		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, exception.SourceNotFoundError{}
@@ -191,33 +190,33 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 		return nil, fmt.Errorf("scanning source: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, lastRunAt, lastSuccessAt, lastFailureReason)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason)
 }
 
 func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source, error) {
 	var s entity.Source
 	var priorityStr string
 	var tierVal int
-	var lastRunAt, lastSuccessAt sql.NullTime
+	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
 	var lastFailureReason, city, cronExpr, notes sql.NullString
 
 	err := rows.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &s.IsActive,
+		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
-		&lastRunAt, &lastSuccessAt, &lastFailureReason, &notes, &s.CreatedAt, &s.UpdatedAt,
+		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scanning source row: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, lastRunAt, lastSuccessAt, lastFailureReason)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason)
 }
 
 func (r *PostgresSourceRepository) buildSource(
 	s *entity.Source, priorityStr string, tierVal int,
 	city, cronExpr, notes sql.NullString,
-	lastRunAt, lastSuccessAt sql.NullTime,
+	nextRunAt, lastRunAt, lastSuccessAt sql.NullTime,
 	lastFailureReason sql.NullString,
 ) (*entity.Source, error) {
 	priority, err := value_object.NewSourcePriority(priorityStr)
@@ -234,6 +233,7 @@ func (r *PostgresSourceRepository) buildSource(
 	if city.Valid { s.City = city.String }
 	if cronExpr.Valid { s.CronExpression = cronExpr.String }
 	if notes.Valid { s.Notes = notes.String }
+	if nextRunAt.Valid { s.NextRunAt = &nextRunAt.Time }
 	if lastRunAt.Valid { s.LastRunAt = &lastRunAt.Time }
 	if lastSuccessAt.Valid { s.LastSuccessAt = &lastSuccessAt.Time }
 	if lastFailureReason.Valid { s.LastFailureReason = lastFailureReason.String }

@@ -44,7 +44,7 @@ func (uc *UpsertProductsUseCase) execute(
 	rawProducts []scrapingport.RawProduct,
 ) (created, updated int, err error) {
 	for _, raw := range rawProducts {
-		if raw.Title == "" || raw.URL == "" {
+		if raw.Title == "" {
 			continue
 		}
 

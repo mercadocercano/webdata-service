@@ -52,14 +52,15 @@ func TestScrapedProduct_Create_WithEmptyTitle_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "title")
 }
 
-func TestScrapedProduct_Create_WithEmptyURL_ReturnsError(t *testing.T) {
+func TestScrapedProduct_Create_WithEmptyURL_Succeeds(t *testing.T) {
+	// URL is optional — callers use source.BaseURL as fallback when not available.
 	params := aNewProduct()
 	params.URL = ""
 
-	_, err := entity.NewScrapedProduct(params)
+	p, err := entity.NewScrapedProduct(params)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "url")
+	assert.NoError(t, err)
+	assert.Equal(t, "", p.URL)
 }
 
 func TestScrapedProduct_HasPriceChanged_WhenPriceDiffers_ReturnsTrue(t *testing.T) {

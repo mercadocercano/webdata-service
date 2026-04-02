@@ -121,11 +121,12 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 			return nil, fmt.Errorf("polling extract job %s: %w", jobID, err)
 		}
 
+		// Bug 2 fix: during "processing" the API returns data:[] (empty array),
+		// only when "completed" does it return data:{products:[...]} (object).
+		// Use RawMessage to defer parsing until we confirm status=completed.
 		var pollResp struct {
-			Status string `json:"status"`
-			Data   struct {
-				Products []productItem `json:"products"`
-			} `json:"data"`
+			Status string          `json:"status"`
+			Data   json.RawMessage `json:"data"`
 		}
 		if err := json.Unmarshal(pollBody, &pollResp); err != nil {
 			return nil, fmt.Errorf("parsing extract poll response: %w", err)
@@ -135,8 +136,15 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 			continue
 		}
 
-		products := make([]scrapingport.RawProduct, 0, len(pollResp.Data.Products))
-		for _, p := range pollResp.Data.Products {
+		var extractedData struct {
+			Products []productItem `json:"products"`
+		}
+		if err := json.Unmarshal(pollResp.Data, &extractedData); err != nil {
+			return nil, fmt.Errorf("parsing extract data: %w", err)
+		}
+
+		products := make([]scrapingport.RawProduct, 0, len(extractedData.Products))
+		for _, p := range extractedData.Products {
 			products = append(products, scrapingport.RawProduct{
 				Title:         p.Title,
 				Price:         p.Price,

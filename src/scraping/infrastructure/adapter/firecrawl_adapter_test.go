@@ -31,11 +31,16 @@ func TestFirecrawlAdapter_Extract_AsyncPolling(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/extract/job-abc":
 			pollCalls++
 			if pollCalls == 1 {
-				// First poll: still processing
-				json.NewEncoder(w).Encode(map[string]interface{}{"status": "processing"})
+				// First poll: still processing.
+				// Real Firecrawl API returns data:[] (empty array) during processing,
+				// NOT a struct. The adapter must defer data parsing until status=completed.
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": "processing",
+					"data":   []interface{}{},
+				})
 				return
 			}
-			// Second poll: completed
+			// Second poll: completed.
 			// Bug 2: data is a single object (struct), not an array.
 			// Bug 3: product name is in "name" field, not "title".
 			json.NewEncoder(w).Encode(map[string]interface{}{

@@ -59,6 +59,14 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 		return err
 	}
 
+	// Fill missing product URLs with the source's base URL as a fallback.
+	// Extraction schemas may not always include individual product page URLs.
+	for i := range rawProducts {
+		if rawProducts[i].URL == "" {
+			rawProducts[i].URL = source.BaseURL
+		}
+	}
+
 	created, updated, upsertErr := uc.upsertUC.ExecuteDetailed(ctx, job.TenantID, job.SourceID, &job.ID, rawProducts)
 
 	found := len(rawProducts)

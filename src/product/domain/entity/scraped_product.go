@@ -63,9 +63,8 @@ func NewScrapedProduct(p CreateProductParams) (*ScrapedProduct, error) {
 	if p.Title == "" {
 		return nil, fmt.Errorf("title is required")
 	}
-	if p.URL == "" {
-		return nil, fmt.Errorf("url is required")
-	}
+	// URL is optional — extraction schemas may not always include individual product URLs.
+	// Callers should provide SourceBaseURL as a fallback when URL is empty.
 
 	currency := p.Currency
 	if currency == "" {

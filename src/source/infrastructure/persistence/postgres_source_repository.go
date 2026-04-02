@@ -42,13 +42,19 @@ func (r *PostgresSourceRepository) Save(ctx context.Context, s *entity.Source) e
 }
 
 func (r *PostgresSourceRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.Source, error) {
-	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
+	cols := `id, tenant_id, name, base_url, category, source_type, city,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
-		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
-		FROM webdata_sources WHERE tenant_id=$1 AND id=$2 AND is_active=true`
+		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at`
 
-	row := r.db.QueryRowContext(ctx, query, tenantID, id)
+	var row *sql.Row
+	if tenantID == database.GlobalTenantID {
+		query := `SELECT ` + cols + ` FROM webdata_sources WHERE id=$1 AND is_active=true`
+		row = r.db.QueryRowContext(ctx, query, id)
+	} else {
+		query := `SELECT ` + cols + ` FROM webdata_sources WHERE tenant_id=$1 AND id=$2 AND is_active=true`
+		row = r.db.QueryRowContext(ctx, query, tenantID, id)
+	}
 	return r.scanSource(row)
 }
 
@@ -83,7 +89,7 @@ func (r *PostgresSourceRepository) FindAll(ctx context.Context, tenantID uuid.UU
 	}
 
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources ` + where +
@@ -146,7 +152,7 @@ func (r *PostgresSourceRepository) Delete(ctx context.Context, tenantID, id uuid
 
 func (r *PostgresSourceRepository) FindDueForScraping(ctx context.Context) ([]*entity.Source, error) {
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, firecrawl_method, cron_expression, next_run_at, is_active,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources
@@ -176,10 +182,11 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 	var tierVal int
 	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
 	var lastFailureReason, city, cronExpr, notes sql.NullString
+	var extractionSchemaRaw, crawlConfigRaw []byte
 
 	err := row.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
+		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
 		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -190,7 +197,7 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 		return nil, fmt.Errorf("scanning source: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
 }
 
 func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source, error) {
@@ -199,10 +206,11 @@ func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source
 	var tierVal int
 	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
 	var lastFailureReason, city, cronExpr, notes sql.NullString
+	var extractionSchemaRaw, crawlConfigRaw []byte
 
 	err := rows.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
+		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
 		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -210,7 +218,7 @@ func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source
 		return nil, fmt.Errorf("scanning source row: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
 }
 
 func (r *PostgresSourceRepository) buildSource(
@@ -218,6 +226,7 @@ func (r *PostgresSourceRepository) buildSource(
 	city, cronExpr, notes sql.NullString,
 	nextRunAt, lastRunAt, lastSuccessAt sql.NullTime,
 	lastFailureReason sql.NullString,
+	extractionSchemaRaw, crawlConfigRaw []byte,
 ) (*entity.Source, error) {
 	priority, err := value_object.NewSourcePriority(priorityStr)
 	if err != nil {
@@ -228,8 +237,19 @@ func (r *PostgresSourceRepository) buildSource(
 		return nil, err
 	}
 
+	schema, err := value_object.NewExtractionSchema(extractionSchemaRaw)
+	if err != nil {
+		return nil, fmt.Errorf("building extraction schema: %w", err)
+	}
+	crawlCfg, err := value_object.CrawlConfigFromJSON(crawlConfigRaw)
+	if err != nil {
+		return nil, fmt.Errorf("building crawl config: %w", err)
+	}
+
 	s.Priority = priority
 	s.Tier = tier
+	s.ExtractionSchema = schema
+	s.CrawlConfig = crawlCfg
 	if city.Valid { s.City = city.String }
 	if cronExpr.Valid { s.CronExpression = cronExpr.String }
 	if notes.Valid { s.Notes = notes.String }

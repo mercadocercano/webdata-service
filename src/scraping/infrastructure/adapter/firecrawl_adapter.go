@@ -13,24 +13,45 @@ import (
 )
 
 const (
-	firecrawlBaseURL = "https://api.firecrawl.dev/v1"
-	maxRetries       = 3
+	firecrawlBaseURL    = "https://api.firecrawl.dev/v1"
+	maxRetries          = 3
+	extractPollInterval = 5 * time.Second
+	extractPollTimeout  = 120 * time.Second
 )
 
 type FirecrawlAdapter struct {
-	apiKey     string
-	httpClient *http.Client
+	apiKey       string
+	baseURL      string
+	httpClient   *http.Client
+	pollInterval time.Duration
 }
 
 func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 	return &FirecrawlAdapter{
-		apiKey: apiKey,
+		apiKey:       apiKey,
+		baseURL:      firecrawlBaseURL,
+		pollInterval: extractPollInterval,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
 	}
 }
 
+// newFirecrawlAdapterWithBaseURL creates an adapter with a custom base URL and poll interval.
+// Intended for use in tests only.
+func newFirecrawlAdapterWithBaseURL(apiKey, baseURL string) *FirecrawlAdapter {
+	return &FirecrawlAdapter{
+		apiKey:       apiKey,
+		baseURL:      baseURL,
+		pollInterval: 100 * time.Millisecond, // fast polling for tests
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}
+}
+
+// Extract calls the async /v1/extract endpoint, polls until completion,
+// and returns the structured product list.
 func (a *FirecrawlAdapter) Extract(ctx context.Context, url string, schema json.RawMessage, opts scrapingport.ExtractOptions) ([]scrapingport.RawProduct, error) {
 	if a.apiKey == "" {
 		return nil, fmt.Errorf("firecrawl API key not configured")
@@ -44,36 +65,78 @@ func (a *FirecrawlAdapter) Extract(ctx context.Context, url string, schema json.
 		payload["prompt"] = opts.Prompt
 	}
 
-	respBody, err := a.doRequestWithRetry(ctx, "POST", "/extract", payload)
+	// Bug 1 fix: POST /extract returns an async job id, not the result directly.
+	initBody, err := a.doRequestWithRetry(ctx, "POST", "/extract", payload)
 	if err != nil {
-		return nil, fmt.Errorf("firecrawl extract: %w", err)
+		return nil, fmt.Errorf("firecrawl extract submit: %w", err)
 	}
 
-	var result struct {
-		Success bool `json:"success"`
-		Data    []struct {
-			Products []struct {
-				Title         string   `json:"title"`
-				Price         *float64 `json:"price"`
-				OriginalPrice *float64 `json:"original_price"`
-				URL           string   `json:"url"`
-				ImageURL      string   `json:"image_url"`
-				Description   string   `json:"description"`
-				Brand         string   `json:"brand"`
-				Category      string   `json:"category"`
-				SKU           string   `json:"sku"`
-				InStock       *bool    `json:"in_stock"`
-			} `json:"products"`
-		} `json:"data"`
+	var initResp struct {
+		Success bool   `json:"success"`
+		ID      string `json:"id"`
+	}
+	if err := json.Unmarshal(initBody, &initResp); err != nil {
+		return nil, fmt.Errorf("parsing extract init response: %w", err)
+	}
+	if !initResp.Success || initResp.ID == "" {
+		return nil, fmt.Errorf("firecrawl extract did not return a job id")
 	}
 
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("parsing extract response: %w", err)
+	return a.pollExtractJob(ctx, initResp.ID)
+}
+
+// pollExtractJob polls GET /v1/extract/{id} until status is "completed".
+func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]scrapingport.RawProduct, error) {
+	deadline := time.Now().Add(extractPollTimeout)
+	path := "/extract/" + jobID
+
+	// Bug 2 fix: data is a single object, not an array.
+	// Bug 3 fix: product name field is "name" in the schema, not "title".
+	type productItem struct {
+		Title         string   `json:"name"`
+		Price         *float64 `json:"price"`
+		OriginalPrice *float64 `json:"original_price"`
+		URL           string   `json:"url"`
+		ImageURL      string   `json:"image_url"`
+		Description   string   `json:"description"`
+		Brand         string   `json:"brand"`
+		Category      string   `json:"category"`
+		SKU           string   `json:"sku"`
+		InStock       *bool    `json:"in_stock"`
 	}
 
-	var products []scrapingport.RawProduct
-	for _, d := range result.Data {
-		for _, p := range d.Products {
+	for {
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("firecrawl extract job %s timed out after %s", jobID, extractPollTimeout)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(a.pollInterval):
+		}
+
+		pollBody, err := a.doRequestWithRetry(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, fmt.Errorf("polling extract job %s: %w", jobID, err)
+		}
+
+		var pollResp struct {
+			Status string `json:"status"`
+			Data   struct {
+				Products []productItem `json:"products"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(pollBody, &pollResp); err != nil {
+			return nil, fmt.Errorf("parsing extract poll response: %w", err)
+		}
+
+		if pollResp.Status != "completed" {
+			continue
+		}
+
+		products := make([]scrapingport.RawProduct, 0, len(pollResp.Data.Products))
+		for _, p := range pollResp.Data.Products {
 			products = append(products, scrapingport.RawProduct{
 				Title:         p.Title,
 				Price:         p.Price,
@@ -87,8 +150,8 @@ func (a *FirecrawlAdapter) Extract(ctx context.Context, url string, schema json.
 				InStock:       p.InStock,
 			})
 		}
+		return products, nil
 	}
-	return products, nil
 }
 
 func (a *FirecrawlAdapter) Scrape(ctx context.Context, url string, opts scrapingport.ScrapeOptions) (string, error) {
@@ -218,7 +281,7 @@ func (a *FirecrawlAdapter) doRequest(ctx context.Context, method, path string, p
 		reqBody = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, firecrawlBaseURL+path, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, a.baseURL+path, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

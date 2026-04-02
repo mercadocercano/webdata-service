@@ -6,6 +6,7 @@ import (
 
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/entity"
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	sourceentity "github.com/mercadocercano/webdata-service/src/source/domain/entity"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 )
@@ -36,12 +37,9 @@ func (uc *ExecuteScrapingUseCase) ClaimJob(ctx context.Context) (*entity.Scrapin
 }
 
 func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.ScrapingJob) error {
-	if err := job.Start(); err != nil {
-		return fmt.Errorf("starting job: %w", err)
-	}
-	if err := uc.jobRepo.Update(ctx, job); err != nil {
-		return fmt.Errorf("updating job to running: %w", err)
-	}
+	// ClaimPendingJob already transitions the job to running atomically
+	// (SELECT FOR UPDATE SKIP LOCKED + UPDATE status='running' in one tx)
+	// so no need to call job.Start() here.
 
 	source, err := uc.sourceRepo.FindByID(ctx, job.TenantID, job.SourceID)
 	if err != nil {
@@ -50,9 +48,10 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 		return err
 	}
 
-	rawProducts, err := uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{})
+	// Bug 4 fix: dispatch to the correct adapter method based on source.FirecrawlMethod.
+	rawProducts, err := uc.fetchProducts(ctx, source)
 	if err != nil {
-		reason := fmt.Sprintf("extract failed: %v", err)
+		reason := fmt.Sprintf("%s failed: %v", source.FirecrawlMethod, err)
 		_ = job.Fail(reason)
 		_ = uc.jobRepo.Update(ctx, job)
 		source.RecordFailure(reason)
@@ -75,4 +74,37 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 	_ = uc.jobRepo.Update(ctx, job)
 	_ = uc.sourceRepo.Update(ctx, source)
 	return upsertErr
+}
+
+// fetchProducts dispatches to Extract, Scrape, or Crawl based on the source's FirecrawlMethod.
+// Only "extract" (the default) returns structured products directly.
+func (uc *ExecuteScrapingUseCase) fetchProducts(ctx context.Context, source *sourceentity.Source) ([]scrapingport.RawProduct, error) {
+	switch source.FirecrawlMethod {
+	case "extract", "":
+		return uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{})
+
+	case "scrape":
+		_, err := uc.scraper.Scrape(ctx, source.BaseURL, scrapingport.ScrapeOptions{IncludeMarkdown: true})
+		if err != nil {
+			return nil, fmt.Errorf("scrape: %w", err)
+		}
+		// Scrape returns raw content; structured product extraction from HTML/Markdown
+		// is not yet implemented — return empty product list.
+		return nil, nil
+
+	case "crawl":
+		_, err := uc.scraper.Crawl(ctx, source.BaseURL, scrapingport.CrawlOptions{
+			MaxDepth:    source.CrawlConfig.MaxDepth,
+			URLPatterns: source.CrawlConfig.URLPatterns,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("crawl: %w", err)
+		}
+		// Crawl starts an async job; product extraction requires a separate
+		// polling flow that is not yet implemented — return empty product list.
+		return nil, nil
+
+	default:
+		return nil, fmt.Errorf("unknown firecrawl_method %q for source %s", source.FirecrawlMethod, source.ID)
+	}
 }

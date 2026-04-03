@@ -41,7 +41,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 6 * * 1", // lunes 06:00
 		notes:           "Catálogo semanal online. Presencia confirmada en NEA. Mercadería del día a día.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"unit":{"type":"string"},"sku":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"unit":{"type":"string"},"sku":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Diarco",
@@ -54,7 +54,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 6 * * 1", // lunes 06:00
 		notes:           "Precios exclusivos con DNI. Sucursal confirmada en NEA (Uruguay 1163).",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"unit":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"unit":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Carrefour",
@@ -64,10 +64,10 @@ var neaSources = []sourceRow{
 		city:            "Posadas/Corrientes/Resistencia",
 		priority:        "high",
 		tier:            1,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 7 * * *", // diario 07:00
 		notes:           "Cadena nacional con ecommerce activo y presencia física en NEA.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"originalPrice":{"type":"number"},"brand":{"type":"string"},"category":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"originalPrice":{"type":"number"}}}}}}`,
 	},
 	{
 		name:            "Electro Misiones",
@@ -77,10 +77,10 @@ var neaSources = []sourceRow{
 		city:            "Posadas/NEA",
 		priority:        "high",
 		tier:            1,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 1", // lunes 08:00
 		notes:           "Principal cadena regional de electrónica del NEA. Sucursales en Posadas, Garupá, Santo Tomé, Ituzaingó.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"installments":{"type":"string"},"brand":{"type":"string"},"model":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"installments":{"type":"string"},"model":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Farmacity",
@@ -93,7 +93,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 1", // lunes 08:00
 		notes:           "Cadena nacional con ecommerce activo. Medicamentos, salud, belleza.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"laboratoire":{"type":"string"},"activeIngredient":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"laboratoire":{"type":"string"},"activeIngredient":{"type":"string"}}}}}}`,
 	},
 	// ── Tier 2 — Alta/Media prioridad, scraping semanal ────────────────────
 	{
@@ -107,7 +107,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 6 * * 2", // martes 06:00
 		notes:           "Integrado en Precios Justos Barriales. Catálogo actualizado online.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"unit":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"unit":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Coto",
@@ -117,10 +117,10 @@ var neaSources = []sourceRow{
 		city:            "Posadas/Corrientes",
 		priority:        "high",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 7 * * 3", // miércoles 07:00
 		notes:           "Cadena nacional con buscador de sucursales y compra online.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"brand":{"type":"string"},"category":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "La Anónima",
@@ -130,10 +130,10 @@ var neaSources = []sourceRow{
 		city:            "Resistencia/NEA",
 		priority:        "high",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 7 * * 3", // miércoles 07:00
 		notes:           "Fuerte presencia en NEA e interior. Catálogo online activo.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"brand":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Cetrogar",
@@ -143,10 +143,10 @@ var neaSources = []sourceRow{
 		city:            "Nacional/NEA",
 		priority:        "high",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 2", // martes 08:00
 		notes:           "ecommerce nacional con fuerte presencia en interior del país.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"installments":{"type":"string"},"brand":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"installments":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Easy",
@@ -156,10 +156,10 @@ var neaSources = []sourceRow{
 		city:            "Nacional/NEA",
 		priority:        "high",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 9 * * 1", // lunes 09:00
 		notes:           "Cadena con sucursales y ecommerce. Catálogo de herramientas, construcción y hogar.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"brand":{"type":"string"},"category":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Sodimac",
@@ -169,10 +169,10 @@ var neaSources = []sourceRow{
 		city:            "Nacional/NEA",
 		priority:        "high",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 9 * * 1", // lunes 09:00
 		notes:           "Catálogo amplio de hogar y construcción. Retiro en tienda y entrega.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"brand":{"type":"string"},"sku":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"sku":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Farmalife",
@@ -185,7 +185,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 2", // martes 08:00
 		notes:           "Sucursal física en Corrientes (Pellegrini 645). Dermocosmética, cuidado personal.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"brand":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Naldo",
@@ -195,10 +195,10 @@ var neaSources = []sourceRow{
 		city:            "Nacional/NEA",
 		priority:        "medium",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 4", // jueves 08:00
 		notes:           "Envíos a todo el país. Buena referencia de precios de electrónica.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"installments":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"installments":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Megatone",
@@ -208,10 +208,10 @@ var neaSources = []sourceRow{
 		city:            "Nacional/NEA",
 		priority:        "medium",
 		tier:            2,
-		firecrawlMethod: "crawl",
+		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 4", // jueves 08:00
 		notes:           "Cuotas sin interés. Envíos nacionales. Referencia de precios electrodomésticos.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"installments":{"type":"string"},"brand":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"installments":{"type":"string"}}}}}}`,
 	},
 	{
 		name:            "Farmar",
@@ -224,7 +224,7 @@ var neaSources = []sourceRow{
 		firecrawlMethod: "extract",
 		cronExpression:  "0 8 * * 3", // miércoles 08:00
 		notes:           "Descuentos 2x1, 70-80%. Referencia de precios farmacia online.",
-		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"discount":{"type":"string"}}}}}}`,
+		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"discount":{"type":"string"}}}}}}`,
 	},
 }
 

@@ -38,9 +38,10 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 			updated_at = EXCLUDED.updated_at
 		RETURNING (xmax = 0) AS inserted`
 
-	var rawDataJSON []byte
-	if p.RawData != nil {
-		rawDataJSON = p.RawData
+	// Use interface{} nil so lib/pq sends NULL for JSONB, not an empty byte slice.
+	var rawDataJSON interface{}
+	if len(p.RawData) > 0 {
+		rawDataJSON = []byte(p.RawData)
 	}
 
 	var inserted bool

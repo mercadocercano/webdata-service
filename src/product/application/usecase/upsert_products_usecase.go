@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
@@ -60,11 +61,15 @@ func (uc *UpsertProductsUseCase) execute(
 					record := value_object.NewPriceRecord(tenantID, existing.ID, oldPrice)
 					_ = uc.repo.SavePriceRecord(ctx, record)
 					updated++
+				} else {
+					fmt.Printf("[upsert] error saving price update for product %s (title=%q): %v\n", existing.ID, existing.Title, saveErr)
 				}
 			} else {
 				existing.TouchLastSeen()
 				if _, saveErr := uc.repo.Upsert(ctx, existing); saveErr == nil {
 					updated++
+				} else {
+					fmt.Printf("[upsert] error touching last_seen for product %s (title=%q): %v\n", existing.ID, existing.Title, saveErr)
 				}
 			}
 			continue
@@ -72,30 +77,33 @@ func (uc *UpsertProductsUseCase) execute(
 
 		// New product
 		params := entity.CreateProductParams{
-			TenantID:    tenantID,
-			SourceID:    sourceID,
-			JobID:       jobID,
-			Title:       raw.Title,
-			Price:       raw.Price,
+			TenantID:      tenantID,
+			SourceID:      sourceID,
+			JobID:         jobID,
+			Title:         raw.Title,
+			Price:         raw.Price,
 			OriginalPrice: raw.OriginalPrice,
-			URL:         raw.URL,
-			ImageURL:    raw.ImageURL,
-			Description: raw.Description,
-			Brand:       raw.Brand,
-			Category:    raw.Category,
-			SKU:         raw.SKU,
-			EAN:         raw.EAN,
-			InStock:     raw.InStock,
-			ContentHash: hash,
+			URL:           raw.URL,
+			ImageURL:      raw.ImageURL,
+			Description:   raw.Description,
+			Brand:         raw.Brand,
+			Category:      raw.Category,
+			SKU:           raw.SKU,
+			EAN:           raw.EAN,
+			InStock:       raw.InStock,
+			ContentHash:   hash,
 		}
 
 		product, newErr := entity.NewScrapedProduct(params)
 		if newErr != nil {
+			fmt.Printf("[upsert] error constructing product (title=%q): %v\n", raw.Title, newErr)
 			continue
 		}
 
 		if _, upsertErr := uc.repo.Upsert(ctx, product); upsertErr == nil {
 			created++
+		} else {
+			fmt.Printf("[upsert] error saving new product (title=%q, hash=%s): %v\n", product.Title, product.ContentHash, upsertErr)
 		}
 	}
 

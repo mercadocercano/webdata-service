@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mercadocercano/webdata-service/src/shared/database"
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/exception"
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/port"
@@ -57,9 +58,7 @@ func (r *PostgresJobRepository) FindAll(ctx context.Context, tenantID uuid.UUID,
 	}
 	offset := (page - 1) * pageSize
 
-	where := "WHERE tenant_id=$1"
-	args := []interface{}{tenantID}
-	argIdx := 2
+	where, args, argIdx := database.TenantWhereClause(tenantID)
 
 	if filter.Status != "" {
 		where += fmt.Sprintf(" AND status=$%d", argIdx)

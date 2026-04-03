@@ -33,6 +33,33 @@ func (m *mockProductRepo) Upsert(ctx context.Context, p *entity.ScrapedProduct) 
 	return !exists, nil
 }
 
+// failingProductRepo simulates a repo where Upsert always fails (e.g. FK violation).
+type failingProductRepo struct{}
+
+func (r *failingProductRepo) Upsert(_ context.Context, _ *entity.ScrapedProduct) (bool, error) {
+	return false, errors.New("pq: insert or update on table \"webdata_products\" violates foreign key constraint")
+}
+
+func (r *failingProductRepo) FindByContentHash(_ context.Context, _, _ uuid.UUID, _ value_object.ContentHash) (*entity.ScrapedProduct, error) {
+	return nil, errors.New("product not found")
+}
+
+func (r *failingProductRepo) FindByID(_ context.Context, _, _ uuid.UUID) (*entity.ScrapedProduct, error) {
+	return nil, errors.New("product not found")
+}
+
+func (r *failingProductRepo) FindAll(_ context.Context, _ uuid.UUID, _ port.ProductFilter) ([]*entity.ScrapedProduct, int, error) {
+	return nil, 0, nil
+}
+
+func (r *failingProductRepo) SavePriceRecord(_ context.Context, _ value_object.PriceRecord) error {
+	return nil
+}
+
+func (r *failingProductRepo) FindPriceHistory(_ context.Context, _, _ uuid.UUID) ([]value_object.PriceRecord, error) {
+	return nil, nil
+}
+
 func (m *mockProductRepo) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	p, ok := m.products[id.String()]
 	if !ok {
@@ -138,6 +165,42 @@ func TestUpsertProductsUseCase_PriceHistoryOnChange(t *testing.T) {
 	_, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
 	require.NoError(t, err)
 	assert.Greater(t, len(repo.priceHistory), initialHistory)
+}
+
+// --- T-PRD-A04: UpsertProducts no cuenta productos cuando Upsert falla (regresión MER-78) ---
+
+func TestUpsertProductsUseCase_ReturnsZeroWhenUpsertFails(t *testing.T) {
+	// Arrange — repo que siempre falla en Upsert (simula FK violation)
+	repo := &failingProductRepo{}
+	uc := usecase.NewUpsertProductsUseCase(repo)
+	price := 100.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Leche 1L", URL: "https://example.com/leche", Price: &price},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), uuid.New(), uuid.New(), nil, raw)
+
+	// Assert — el use case no propaga el error de upsert, pero tampoco cuenta el producto como guardado
+	require.NoError(t, err)
+	assert.Equal(t, 0, saved, "no debe contar productos cuyo Upsert falló")
+}
+
+func TestUpsertProductsUseCase_SkipsProductsWithEmptyTitle(t *testing.T) {
+	// Arrange
+	repo := newMockProductRepo()
+	uc := usecase.NewUpsertProductsUseCase(repo)
+	raw := []scrapeport.RawProduct{
+		{Title: "", URL: "https://example.com/empty"},
+		{Title: "Producto válido", URL: "https://example.com/valid"},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), uuid.New(), uuid.New(), nil, raw)
+
+	// Assert — el producto con título vacío se ignora silenciosamente
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved, "solo debe guardar el producto con título válido")
 }
 
 // --- T-PRD-A03: GetPriceHistory ordered ---

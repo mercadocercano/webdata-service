@@ -92,25 +92,16 @@ func (uc *ExecuteScrapingUseCase) fetchProducts(ctx context.Context, source *sou
 		return uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{})
 
 	case "scrape":
-		_, err := uc.scraper.Scrape(ctx, source.BaseURL, scrapingport.ScrapeOptions{IncludeMarkdown: true})
-		if err != nil {
-			return nil, fmt.Errorf("scrape: %w", err)
-		}
-		// Scrape returns raw content; structured product extraction from HTML/Markdown
-		// is not yet implemented — return empty product list.
-		return nil, nil
+		// Structured product extraction from scraped HTML/Markdown is not yet implemented.
+		// Calling Firecrawl here would consume credits with no benefit.
+		// Migrate source to firecrawl_method='extract' to use LLM-powered product extraction.
+		return nil, fmt.Errorf("firecrawl_method 'scrape' is not yet supported for product extraction; migrate source %s to use 'extract' method", source.ID)
 
 	case "crawl":
-		_, err := uc.scraper.Crawl(ctx, source.BaseURL, scrapingport.CrawlOptions{
-			MaxDepth:    source.CrawlConfig.MaxDepth,
-			URLPatterns: source.CrawlConfig.URLPatterns,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("crawl: %w", err)
-		}
-		// Crawl starts an async job; product extraction requires a separate
-		// polling flow that is not yet implemented — return empty product list.
-		return nil, nil
+		// Async crawl polling + product extraction is not yet implemented.
+		// Calling Firecrawl here would consume credits with no benefit.
+		// Migrate source to firecrawl_method='extract' to use LLM-powered product extraction.
+		return nil, fmt.Errorf("firecrawl_method 'crawl' is not yet supported for product extraction; migrate source %s to use 'extract' method", source.ID)
 
 	default:
 		return nil, fmt.Errorf("unknown firecrawl_method %q for source %s", source.FirecrawlMethod, source.ID)

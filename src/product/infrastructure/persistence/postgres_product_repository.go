@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/mercadocercano/webdata-service/src/shared/database"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/product/domain/exception"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
@@ -89,9 +90,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 	}
 	offset := (page - 1) * pageSize
 
-	where := "WHERE tenant_id=$1"
-	args := []interface{}{tenantID}
-	argIdx := 2
+	where, args, argIdx := database.TenantWhereClause(tenantID)
 
 	if filter.SourceID != nil {
 		where += fmt.Sprintf(" AND source_id=$%d", argIdx)

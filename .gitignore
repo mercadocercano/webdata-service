@@ -1,0 +1,27 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build artifacts
+vendor/
+go.work
+tmp/
+tmp/main
+
+# Go build cache
+.cache/
+.config/
+.gitconfig
+
+# Management folders
+*-management/
+
+# IDE
+.cursorrules
+.idea/
+.vscode/

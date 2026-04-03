@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	ClaimsKey contextKey = "jwt_claims"
+	ClaimsKey    contextKey = "jwt_claims"
+	IsAdminKey   contextKey = "is_admin"
 )
 
 type Claims struct {
@@ -23,6 +24,14 @@ type Claims struct {
 
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check API Key auth (marketplace-admin)
+		if authenticateByAPIKey(r) {
+			ctx := context.WithValue(r.Context(), IsAdminKey, true)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// JWT auth
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			http.Error(w, `{"error":"Authorization header is required"}`, http.StatusUnauthorized)
@@ -56,7 +65,25 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func authenticateByAPIKey(r *http.Request) bool {
+	apiKey := r.Header.Get("X-API-Key")
+	userRole := r.Header.Get("X-User-Role")
+	if apiKey == "" || userRole != "marketplace_admin" {
+		return false
+	}
+	expectedKey := os.Getenv("MARKETPLACE_ADMIN_API_KEY")
+	if expectedKey == "" {
+		expectedKey = "marketplace-admin-key-2025"
+	}
+	return apiKey == expectedKey
+}
+
 func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 	claims, ok := ctx.Value(ClaimsKey).(*Claims)
 	return claims, ok
+}
+
+func IsAdminFromContext(ctx context.Context) bool {
+	isAdmin, _ := ctx.Value(IsAdminKey).(bool)
+	return isAdmin
 }

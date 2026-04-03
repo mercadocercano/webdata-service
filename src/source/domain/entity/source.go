@@ -2,10 +2,17 @@ package entity
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/source/domain/value_object"
+)
+
+const (
+	circuitBreakerThreshold = 5
+	backoffBaseMinutes      = 5.0
+	backoffMaxHours         = 24.0
 )
 
 type Source struct {
@@ -29,11 +36,12 @@ type Source struct {
 	SuccessfulRuns   int
 	FailedRuns       int
 	LastRunAt        *time.Time
-	LastSuccessAt    *time.Time
-	LastFailureReason string
-	Notes            string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	LastSuccessAt      *time.Time
+	LastFailureReason  string
+	ConsecutiveFailures int
+	Notes              string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type CreateSourceParams struct {
@@ -109,6 +117,7 @@ func (s *Source) RecordSuccess() {
 	s.LastRunAt = &now
 	s.LastSuccessAt = &now
 	s.LastFailureReason = ""
+	s.ConsecutiveFailures = 0
 	s.recalculateHealthScore()
 	s.UpdatedAt = now
 }
@@ -119,7 +128,24 @@ func (s *Source) RecordFailure(reason string) {
 	s.FailedRuns++
 	s.LastRunAt = &now
 	s.LastFailureReason = reason
+	s.ConsecutiveFailures++
 	s.recalculateHealthScore()
+
+	if s.ConsecutiveFailures >= circuitBreakerThreshold {
+		fmt.Printf("[circuit-breaker] source %s (%s) desactivada tras %d fallos consecutivos: %s\n",
+			s.ID, s.Name, s.ConsecutiveFailures, reason)
+		s.Deactivate()
+	} else {
+		backoffMinutes := backoffBaseMinutes * math.Pow(2, float64(s.ConsecutiveFailures-1))
+		if backoffMinutes > backoffMaxHours*60 {
+			backoffMinutes = backoffMaxHours * 60
+		}
+		nextRun := now.Add(time.Duration(backoffMinutes) * time.Minute)
+		s.NextRunAt = &nextRun
+		fmt.Printf("[backoff] source %s (%s) backoff de %.0f min (fallo #%d): %s\n",
+			s.ID, s.Name, backoffMinutes, s.ConsecutiveFailures, reason)
+	}
+
 	s.UpdatedAt = now
 }
 

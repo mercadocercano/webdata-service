@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
@@ -16,7 +17,6 @@ const (
 	firecrawlBaseURL    = "https://api.firecrawl.dev/v1"
 	maxRetries          = 3
 	extractPollInterval = 5 * time.Second
-	extractPollTimeout  = 120 * time.Second
 )
 
 type FirecrawlAdapter struct {
@@ -24,6 +24,16 @@ type FirecrawlAdapter struct {
 	baseURL      string
 	httpClient   *http.Client
 	pollInterval time.Duration
+	pollTimeout  time.Duration
+}
+
+func parseDurationEnv(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return defaultVal
 }
 
 func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
@@ -31,6 +41,7 @@ func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 		apiKey:       apiKey,
 		baseURL:      firecrawlBaseURL,
 		pollInterval: extractPollInterval,
+		pollTimeout:  parseDurationEnv("FIRECRAWL_EXTRACT_TIMEOUT", 5*time.Minute),
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -44,6 +55,7 @@ func newFirecrawlAdapterWithBaseURL(apiKey, baseURL string) *FirecrawlAdapter {
 		apiKey:       apiKey,
 		baseURL:      baseURL,
 		pollInterval: 100 * time.Millisecond, // fast polling for tests
+		pollTimeout:  10 * time.Second,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -87,7 +99,7 @@ func (a *FirecrawlAdapter) Extract(ctx context.Context, url string, schema json.
 
 // pollExtractJob polls GET /v1/extract/{id} until status is "completed".
 func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]scrapingport.RawProduct, error) {
-	deadline := time.Now().Add(extractPollTimeout)
+	deadline := time.Now().Add(a.pollTimeout)
 	path := "/extract/" + jobID
 
 	// Bug 2 fix: data is a single object, not an array.
@@ -107,7 +119,7 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("firecrawl extract job %s timed out after %s", jobID, extractPollTimeout)
+			return nil, fmt.Errorf("firecrawl extract job %s timed out after %s", jobID, a.pollTimeout)
 		}
 
 		select {

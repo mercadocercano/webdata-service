@@ -34,6 +34,11 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 			last_seen_at = EXCLUDED.last_seen_at,
 			price = EXCLUDED.price,
 			price_changed_at = EXCLUDED.price_changed_at,
+			image_url = EXCLUDED.image_url,
+			category = EXCLUDED.category,
+			brand = EXCLUDED.brand,
+			description = EXCLUDED.description,
+			url = EXCLUDED.url,
 			in_stock = EXCLUDED.in_stock,
 			updated_at = EXCLUDED.updated_at
 		RETURNING (xmax = 0) AS inserted`

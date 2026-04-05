@@ -53,8 +53,11 @@ func (uc *UpsertProductsUseCase) execute(
 
 		existing, findErr := uc.repo.FindByContentHash(ctx, tenantID, sourceID, hash)
 		if findErr == nil && existing != nil {
-			// Product exists — check price change
-			if raw.Price != nil && existing.HasPriceChanged(*raw.Price) {
+			// Enrich missing fields first (image, category, brand, etc.)
+			existing.EnrichFields(raw.ImageURL, raw.Category, raw.Brand, raw.Description, raw.URL, raw.Price)
+
+			// Check price change to record history
+			if raw.Price != nil && existing.Price != nil && existing.HasPriceChanged(*raw.Price) {
 				oldPrice := *existing.Price
 				existing.UpdatePrice(*raw.Price)
 				if _, saveErr := uc.repo.Upsert(ctx, existing); saveErr == nil {

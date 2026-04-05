@@ -125,3 +125,39 @@ func (sp *ScrapedProduct) TouchLastSeen() {
 	sp.LastSeenAt = now
 	sp.UpdatedAt = now
 }
+
+// EnrichFields fills in fields from a new scrape. Empty fields are filled; non-empty are left unchanged.
+// Returns true if any field was updated.
+func (sp *ScrapedProduct) EnrichFields(imageURL, category, brand, description, url string, price *float64) bool {
+	enriched := false
+	if sp.ImageURL == "" && imageURL != "" {
+		sp.ImageURL = imageURL
+		enriched = true
+	}
+	if sp.Category == "" && category != "" {
+		sp.Category = category
+		enriched = true
+	}
+	if sp.Brand == "" && brand != "" {
+		sp.Brand = brand
+		enriched = true
+	}
+	if sp.Description == "" && description != "" {
+		sp.Description = description
+		enriched = true
+	}
+	if sp.URL == "" && url != "" {
+		sp.URL = url
+		enriched = true
+	}
+	if sp.Price == nil && price != nil {
+		sp.Price = price
+		enriched = true
+	}
+	if enriched {
+		now := time.Now()
+		sp.LastSeenAt = now
+		sp.UpdatedAt = now
+	}
+	return enriched
+}

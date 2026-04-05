@@ -7,6 +7,7 @@ type ListProductsRequest struct {
 	Category           string     `json:"category,omitempty"`
 	NormalizedCategory string     `json:"normalized_category,omitempty"`
 	Brand              string     `json:"brand,omitempty"`
+	BusinessTypeCode   string     `json:"business_type,omitempty"`
 	MinPrice           *float64   `json:"min_price,omitempty"`
 	MaxPrice           *float64   `json:"max_price,omitempty"`
 	Query              string     `json:"q,omitempty"`

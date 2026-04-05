@@ -85,6 +85,15 @@ func (r *noopProductRepo) BulkSoftDelete(_ context.Context, _ uuid.UUID, _ []uui
 func (r *noopProductRepo) UpdateBlocked(_ context.Context, _, _ uuid.UUID, _ bool) error {
 	return nil
 }
+func (r *noopProductRepo) SaveBusinessTypes(_ context.Context, _, _ uuid.UUID, _ []productvobj.BusinessTypeAssignment) error {
+	return nil
+}
+func (r *noopProductRepo) RemoveBusinessType(_ context.Context, _, _ uuid.UUID, _ string) error {
+	return nil
+}
+func (r *noopProductRepo) FindBusinessTypesForProduct(_ context.Context, _, _ uuid.UUID) ([]productvobj.BusinessTypeAssignment, error) {
+	return nil, nil
+}
 
 // --- Helper: build executeScrapingUseCase ---
 

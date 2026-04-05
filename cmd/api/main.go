@@ -14,6 +14,7 @@ import (
 	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/scheduler"
 	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
+	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
 	"github.com/mercadocercano/webdata-service/src/shared/database"
@@ -57,12 +58,14 @@ func main() {
 	sourceModule = sourceconfig.NewSourceModule(db, scrapingModule.Repo)
 
 	statsModule := statsconfig.NewStatsModule(sourceModule.Repo, scrapingModule.Repo, productModule.Repo)
+	btProxyCtrl := productcontroller.NewBusinessTypeProxyController()
 
 	router := api.NewRouter(
 		sourceModule.Controller,
 		scrapingModule.Controller,
 		productModule.Controller,
 		statsModule.Controller,
+		btProxyCtrl,
 	)
 
 	// Scheduler

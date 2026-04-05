@@ -37,6 +37,7 @@ type ScrapedProduct struct {
 	RawData            json.RawMessage
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	BusinessTypes      []value_object.BusinessTypeAssignment
 }
 
 type CreateProductParams struct {
@@ -105,6 +106,20 @@ func NewScrapedProduct(p CreateProductParams) (*ScrapedProduct, error) {
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}, nil
+}
+
+func (sp *ScrapedProduct) AssignBusinessTypes(assignments []value_object.BusinessTypeAssignment) {
+	sp.BusinessTypes = assignments
+	sp.UpdatedAt = time.Now()
+}
+
+func (sp *ScrapedProduct) HasBusinessType(code string) bool {
+	for _, bt := range sp.BusinessTypes {
+		if bt.BusinessTypeCode == code {
+			return true
+		}
+	}
+	return false
 }
 
 func (sp *ScrapedProduct) HasPriceChanged(newPrice float64) bool {

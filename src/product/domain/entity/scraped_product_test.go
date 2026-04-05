@@ -109,6 +109,27 @@ func TestContentHash_Generate_IsDeterministic(t *testing.T) {
 	assert.Len(t, hash1, 64) // SHA256 hex length
 }
 
+// TEST-ID: T-002
+func TestScrapedProduct_AssignBusinessTypes_SetsTypes(t *testing.T) {
+	params := aNewProduct()
+	p, _ := entity.NewScrapedProduct(params)
+
+	bt1, _ := value_object.NewBusinessTypeAssignment("almacen", "Almacen")
+	bt2, _ := value_object.NewBusinessTypeAssignment("kiosco", "Kiosco")
+	p.AssignBusinessTypes([]value_object.BusinessTypeAssignment{bt1, bt2})
+
+	assert.Len(t, p.BusinessTypes, 2)
+	assert.True(t, p.HasBusinessType("almacen"))
+	assert.True(t, p.HasBusinessType("kiosco"))
+	assert.False(t, p.HasBusinessType("farmacia"))
+}
+
+func TestBusinessTypeAssignment_New_WithEmptyCode_ReturnsError(t *testing.T) {
+	_, err := value_object.NewBusinessTypeAssignment("", "Empty")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "code")
+}
+
 func TestContentHash_Generate_DiffersForDifferentInputs(t *testing.T) {
 	tenantID := uuid.New()
 	sourceID := uuid.New()

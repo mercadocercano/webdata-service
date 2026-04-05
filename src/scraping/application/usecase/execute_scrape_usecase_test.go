@@ -21,12 +21,18 @@ import (
 // --- Mock scraper ---
 
 type spyScraper struct {
-	scrapeCalled bool
-	crawlCalled  bool
-	products     []scrapeport.RawProduct
+	scrapeCalled     bool
+	scrapeJSONCalled bool
+	crawlCalled      bool
+	products         []scrapeport.RawProduct
 }
 
 func (s *spyScraper) Extract(_ context.Context, _ string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	return s.products, nil
+}
+
+func (s *spyScraper) ScrapeJSON(_ context.Context, _ string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	s.scrapeJSONCalled = true
 	return s.products, nil
 }
 
@@ -125,11 +131,16 @@ func TestExecuteScrapingUseCase_CrawlMethodReturnsErrorWithoutCallingFirecrawl(t
 	assert.False(t, spy.crawlCalled, "no debe llamar a Firecrawl cuando crawl no está implementado")
 }
 
-// --- T-SCR-B02: scrape method falla sin llamar a Firecrawl ---
+// --- T-SCR-B02: scrape method usa ScrapeJSON y retorna productos (MER-141) ---
 
-func TestExecuteScrapingUseCase_ScrapeMethodReturnsErrorWithoutCallingFirecrawl(t *testing.T) {
+func TestExecuteScrapingUseCase_ScrapeMethodCallsScrapeJSONAndSavesProducts(t *testing.T) {
 	// Arrange
-	spy := &spyScraper{}
+	price := 150000.0
+	spy := &spyScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Heladera 300L", URL: "https://cetrogar.com.ar/heladera", Price: &price},
+		},
+	}
 	sourceRepo := newMockSourceRepo()
 	jobRepo := newMockJobRepo()
 	tenantID := uuid.New()
@@ -143,10 +154,136 @@ func TestExecuteScrapingUseCase_ScrapeMethodReturnsErrorWithoutCallingFirecrawl(
 	// Act
 	err := uc.Execute(context.Background(), job)
 
-	// Assert — debe fallar con un mensaje claro, SIN llamar a Firecrawl
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "scrape")
-	assert.False(t, spy.scrapeCalled, "no debe llamar a Firecrawl cuando scrape no está implementado")
+	// Assert — scrape debe usar ScrapeJSON y completar sin error
+	require.NoError(t, err)
+	assert.True(t, spy.scrapeJSONCalled, "debe llamar a ScrapeJSON para method=scrape")
+	assert.False(t, spy.scrapeCalled, "no debe llamar a Scrape (HTML) para extracción de productos")
+}
+
+// --- T-SCR-B03: extract method sigue funcionando normalmente ---
+
+// --- T-SCR-B04: BuildPaginatedURL ---
+
+func TestBuildPaginatedURL_SimpleURL(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/products", "page", 2)
+	assert.Equal(t, "https://example.com/products?page=2", result)
+}
+
+func TestBuildPaginatedURL_URLWithExistingQueryParams(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/products?category=food", "page", 3)
+	assert.Contains(t, result, "page=3")
+	assert.Contains(t, result, "category=food")
+}
+
+func TestBuildPaginatedURL_CustomPageParam(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://www.electromisiones.com.ar/642-electrodomesticos", "p", 2)
+	assert.Equal(t, "https://www.electromisiones.com.ar/642-electrodomesticos?p=2", result)
+}
+
+func TestBuildPaginatedURL_Page1(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/store", "page", 1)
+	assert.Equal(t, "https://example.com/store?page=1", result)
+}
+
+// --- T-SCR-B05: paginated job uses paginated URL ---
+
+func TestExecuteScrapingUseCase_PaginatedJobAppendsPageParam(t *testing.T) {
+	// Arrange
+	price := 100.0
+	capturedURL := ""
+	spy := &urlCaptureScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Producto pagina 2", URL: "https://example.com/p/2", Price: &price},
+		},
+		captureURL: func(url string) { capturedURL = url },
+	}
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	source, _ := sourceentity.NewSource(sourceentity.CreateSourceParams{
+		TenantID:        tenantID,
+		Name:            "Paginated Source",
+		BaseURL:         "https://example.com/products",
+		Category:        "supermercados",
+		SourceType:      "ecommerce",
+		Priority:        "medium",
+		Tier:            2,
+		FirecrawlMethod: "extract",
+	})
+	source.CrawlConfig.MaxPages = 5
+	source.CrawlConfig.PageParam = "p"
+	_ = sourceRepo.Save(context.Background(), source)
+
+	job, _ := entity.NewPaginatedScrapingJob(tenantID, source.ID, "manual", 2)
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	// Act
+	err := uc.Execute(context.Background(), job)
+
+	// Assert — the URL sent to the scraper should include ?p=2
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/products?p=2", capturedURL)
+}
+
+func TestExecuteScrapingUseCase_NonPaginatedJobUsesBaseURL(t *testing.T) {
+	// Arrange
+	price := 100.0
+	capturedURL := ""
+	spy := &urlCaptureScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Producto base", URL: "https://example.com/p/1", Price: &price},
+		},
+		captureURL: func(url string) { capturedURL = url },
+	}
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	job, _ := buildJobWithSource(sourceRepo, tenantID, "extract")
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	// Act
+	err := uc.Execute(context.Background(), job)
+
+	// Assert — page=0 should NOT add pagination params
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com", capturedURL)
+}
+
+// --- url-capturing scraper for pagination tests ---
+
+type urlCaptureScraper struct {
+	products   []scrapeport.RawProduct
+	captureURL func(string)
+}
+
+func (s *urlCaptureScraper) Extract(_ context.Context, url string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	if s.captureURL != nil {
+		s.captureURL(url)
+	}
+	return s.products, nil
+}
+func (s *urlCaptureScraper) ScrapeJSON(_ context.Context, url string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	if s.captureURL != nil {
+		s.captureURL(url)
+	}
+	return s.products, nil
+}
+func (s *urlCaptureScraper) Scrape(_ context.Context, _ string, _ scrapeport.ScrapeOptions) (string, error) {
+	return "", nil
+}
+func (s *urlCaptureScraper) Crawl(_ context.Context, _ string, _ scrapeport.CrawlOptions) (string, error) {
+	return "", nil
+}
+func (s *urlCaptureScraper) CrawlStatus(_ context.Context, _ string) (scrapeport.CrawlResult, error) {
+	return scrapeport.CrawlResult{}, nil
 }
 
 // --- T-SCR-B03: extract method sigue funcionando normalmente ---

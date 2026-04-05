@@ -24,12 +24,12 @@ func NewPostgresJobRepository(db *sql.DB) *PostgresJobRepository {
 
 func (r *PostgresJobRepository) Save(ctx context.Context, j *entity.ScrapingJob) error {
 	query := `INSERT INTO webdata_scraping_jobs
-		(id, tenant_id, source_id, status, trigger_type, retry_count, max_retries, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+		(id, tenant_id, source_id, status, trigger_type, page, retry_count, max_retries, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
 	_, err := r.db.ExecContext(ctx, query,
 		j.ID, j.TenantID, j.SourceID, j.Status.Value(), j.TriggerType.Value(),
-		j.RetryCount, j.MaxRetries, j.CreatedAt,
+		j.Page, j.RetryCount, j.MaxRetries, j.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("saving job: %w", err)
@@ -39,7 +39,7 @@ func (r *PostgresJobRepository) Save(ctx context.Context, j *entity.ScrapingJob)
 
 func (r *PostgresJobRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapingJob, error) {
 	query := `SELECT id, tenant_id, source_id, status, trigger_type, firecrawl_job_id,
-		products_found, products_saved, error_message, started_at, completed_at,
+		page, products_found, products_saved, error_message, started_at, completed_at,
 		created_at, retry_count, max_retries
 		FROM webdata_scraping_jobs WHERE tenant_id=$1 AND id=$2`
 
@@ -77,7 +77,7 @@ func (r *PostgresJobRepository) FindAll(ctx context.Context, tenantID uuid.UUID,
 	}
 
 	query := `SELECT id, tenant_id, source_id, status, trigger_type, firecrawl_job_id,
-		products_found, products_saved, error_message, started_at, completed_at,
+		page, products_found, products_saved, error_message, started_at, completed_at,
 		created_at, retry_count, max_retries
 		FROM webdata_scraping_jobs ` + where +
 		fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
@@ -102,12 +102,12 @@ func (r *PostgresJobRepository) FindAll(ctx context.Context, tenantID uuid.UUID,
 
 func (r *PostgresJobRepository) Update(ctx context.Context, j *entity.ScrapingJob) error {
 	query := `UPDATE webdata_scraping_jobs SET
-		status=$1, firecrawl_job_id=$2, products_found=$3, products_saved=$4,
-		error_message=$5, started_at=$6, completed_at=$7, retry_count=$8
-		WHERE tenant_id=$9 AND id=$10`
+		status=$1, firecrawl_job_id=$2, page=$3, products_found=$4, products_saved=$5,
+		error_message=$6, started_at=$7, completed_at=$8, retry_count=$9
+		WHERE tenant_id=$10 AND id=$11`
 
 	_, err := r.db.ExecContext(ctx, query,
-		j.Status.Value(), j.FirecrawlJobID, j.ProductsFound, j.ProductsSaved,
+		j.Status.Value(), j.FirecrawlJobID, j.Page, j.ProductsFound, j.ProductsSaved,
 		j.ErrorMessage, j.StartedAt, j.CompletedAt, j.RetryCount,
 		j.TenantID, j.ID,
 	)
@@ -128,7 +128,7 @@ func (r *PostgresJobRepository) ClaimPendingJob(ctx context.Context) (*entity.Sc
 	// claim the oldest job from that tenant. This prevents starvation across tenants
 	// while preserving SKIP LOCKED concurrency safety.
 	query := `SELECT id, tenant_id, source_id, status, trigger_type, firecrawl_job_id,
-		products_found, products_saved, error_message, started_at, completed_at,
+		page, products_found, products_saved, error_message, started_at, completed_at,
 		created_at, retry_count, max_retries
 		FROM webdata_scraping_jobs
 		WHERE status='pending'
@@ -174,7 +174,7 @@ func (r *PostgresJobRepository) scanJob(row *sql.Row) (*entity.ScrapingJob, erro
 
 	err := row.Scan(
 		&j.ID, &j.TenantID, &j.SourceID, &statusStr, &triggerStr, &firecrawlJobID,
-		&j.ProductsFound, &j.ProductsSaved, &errorMsg, &startedAt, &completedAt,
+		&j.Page, &j.ProductsFound, &j.ProductsSaved, &errorMsg, &startedAt, &completedAt,
 		&j.CreatedAt, &j.RetryCount, &j.MaxRetries,
 	)
 	if err == sql.ErrNoRows {
@@ -195,7 +195,7 @@ func (r *PostgresJobRepository) scanJobRow(rows *sql.Rows) (*entity.ScrapingJob,
 
 	err := rows.Scan(
 		&j.ID, &j.TenantID, &j.SourceID, &statusStr, &triggerStr, &firecrawlJobID,
-		&j.ProductsFound, &j.ProductsSaved, &errorMsg, &startedAt, &completedAt,
+		&j.Page, &j.ProductsFound, &j.ProductsSaved, &errorMsg, &startedAt, &completedAt,
 		&j.CreatedAt, &j.RetryCount, &j.MaxRetries,
 	)
 	if err != nil {

@@ -134,3 +134,30 @@ func TestJobStatus_InvalidValue_ReturnsError(t *testing.T) {
 	_, err := entity.NewJobStatusFromString("unknown")
 	assert.Error(t, err)
 }
+
+// --- Paginated job creation ---
+
+func TestNewPaginatedScrapingJob_SetsPageField(t *testing.T) {
+	tenantID := uuid.New()
+	sourceID := uuid.New()
+
+	job, err := entity.NewPaginatedScrapingJob(tenantID, sourceID, "scheduled", 3)
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, job.Page)
+	assert.Equal(t, tenantID, job.TenantID)
+	assert.Equal(t, sourceID, job.SourceID)
+	assert.Equal(t, "pending", job.Status.Value())
+}
+
+func TestNewPaginatedScrapingJob_InvalidTrigger_ReturnsError(t *testing.T) {
+	_, err := entity.NewPaginatedScrapingJob(uuid.New(), uuid.New(), "invalid", 1)
+	assert.Error(t, err)
+}
+
+func TestNewScrapingJob_PageDefaultsToZero(t *testing.T) {
+	job, err := entity.NewScrapingJob(uuid.New(), uuid.New(), "manual")
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, job.Page)
+}

@@ -174,6 +174,76 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 	}
 }
 
+// ScrapeJSON calls the sync /v1/scrape endpoint with formats:["json"] and
+// jsonOptions containing the extraction schema and prompt. Returns structured
+// products parsed from data.json.products in the response.
+func (a *FirecrawlAdapter) ScrapeJSON(ctx context.Context, url string, schema json.RawMessage, opts scrapingport.ExtractOptions) ([]scrapingport.RawProduct, error) {
+	if a.apiKey == "" {
+		return nil, fmt.Errorf("firecrawl API key not configured")
+	}
+
+	jsonOptions := map[string]interface{}{
+		"schema": schema,
+	}
+	if opts.Prompt != "" {
+		jsonOptions["prompt"] = opts.Prompt
+	}
+
+	payload := map[string]interface{}{
+		"url":         url,
+		"formats":     []string{"json"},
+		"jsonOptions": jsonOptions,
+	}
+
+	respBody, err := a.doRequestWithRetry(ctx, "POST", "/scrape", payload)
+	if err != nil {
+		return nil, fmt.Errorf("firecrawl scrape json: %w", err)
+	}
+
+	type productItem struct {
+		Title         string   `json:"name"`
+		Price         *float64 `json:"price"`
+		OriginalPrice *float64 `json:"original_price"`
+		URL           string   `json:"url"`
+		ImageURL      string   `json:"image_url"`
+		Description   string   `json:"description"`
+		Brand         string   `json:"brand"`
+		Category      string   `json:"category"`
+		SKU           string   `json:"sku"`
+		InStock       *bool    `json:"in_stock"`
+	}
+
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			JSON struct {
+				Products []productItem `json:"products"`
+			} `json:"json"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parsing scrape json response: %w", err)
+	}
+
+	products := make([]scrapingport.RawProduct, 0, len(result.Data.JSON.Products))
+	for _, p := range result.Data.JSON.Products {
+		products = append(products, scrapingport.RawProduct{
+			Title:         p.Title,
+			Price:         p.Price,
+			OriginalPrice: p.OriginalPrice,
+			URL:           p.URL,
+			ImageURL:      p.ImageURL,
+			Description:   p.Description,
+			Brand:         p.Brand,
+			Category:      p.Category,
+			SKU:           p.SKU,
+			InStock:       p.InStock,
+		})
+	}
+	return products, nil
+}
+
 func (a *FirecrawlAdapter) Scrape(ctx context.Context, url string, opts scrapingport.ScrapeOptions) (string, error) {
 	if a.apiKey == "" {
 		return "", fmt.Errorf("firecrawl API key not configured")

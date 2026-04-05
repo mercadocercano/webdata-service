@@ -1,0 +1,2 @@
+-- Down migration 018: no-op (cannot restore previous inflated counter values)
+-- The recalculated values are more accurate than the previous ones.

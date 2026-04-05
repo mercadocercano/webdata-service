@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/source/domain/entity"
@@ -14,6 +15,8 @@ type SourceRepository interface {
 	Update(ctx context.Context, source *entity.Source) error
 	Delete(ctx context.Context, tenantID, id uuid.UUID) error
 	FindDueForScraping(ctx context.Context) ([]*entity.Source, error)
+	UpdateNextRunAt(ctx context.Context, sourceID uuid.UUID, nextRunAt time.Time) error
+	RecordJobResult(ctx context.Context, sourceID uuid.UUID, success bool) error
 }
 
 type SourceFilter struct {

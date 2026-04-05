@@ -294,6 +294,53 @@ func (s *urlCaptureScraper) CrawlStatus(_ context.Context, _ string) (scrapeport
 	return scrapeport.CrawlResult{}, nil
 }
 
+// --- T-SCR-B06: Execute uses RecordJobResult (atomic) instead of full Update for source ---
+
+func TestExecuteScrapingUseCase_SuccessUsesRecordJobResult(t *testing.T) {
+	price := 100.0
+	spy := &spyScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Leche 1L", URL: "https://example.com/leche", Price: &price},
+		},
+	}
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	job, source := buildJobWithSource(sourceRepo, tenantID, "extract")
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	err := uc.Execute(context.Background(), job)
+
+	require.NoError(t, err)
+	require.Len(t, sourceRepo.recordJobResultCalls, 1)
+	assert.Equal(t, source.ID, sourceRepo.recordJobResultCalls[0].SourceID)
+	assert.True(t, sourceRepo.recordJobResultCalls[0].Success)
+}
+
+func TestExecuteScrapingUseCase_FailureUsesRecordJobResult(t *testing.T) {
+	spy := &spyScraper{} // no products → crawl method fails
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	job, source := buildJobWithSource(sourceRepo, tenantID, "crawl")
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	err := uc.Execute(context.Background(), job)
+
+	require.Error(t, err)
+	require.Len(t, sourceRepo.recordJobResultCalls, 1)
+	assert.Equal(t, source.ID, sourceRepo.recordJobResultCalls[0].SourceID)
+	assert.False(t, sourceRepo.recordJobResultCalls[0].Success)
+}
+
 // --- T-SCR-B03: extract method sigue funcionando normalmente ---
 
 func TestExecuteScrapingUseCase_ExtractMethodCallsFirecrawlAndSavesProducts(t *testing.T) {

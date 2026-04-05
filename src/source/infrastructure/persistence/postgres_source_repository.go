@@ -43,7 +43,7 @@ func (r *PostgresSourceRepository) Save(ctx context.Context, s *entity.Source) e
 
 func (r *PostgresSourceRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.Source, error) {
 	cols := `id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, prompt, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at`
 
@@ -89,7 +89,7 @@ func (r *PostgresSourceRepository) FindAll(ctx context.Context, tenantID uuid.UU
 	}
 
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, prompt, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources ` + where +
@@ -150,9 +150,35 @@ func (r *PostgresSourceRepository) Delete(ctx context.Context, tenantID, id uuid
 	return nil
 }
 
+func (r *PostgresSourceRepository) UpdateNextRunAt(ctx context.Context, sourceID uuid.UUID, nextRunAt time.Time) error {
+	query := `UPDATE webdata_sources SET next_run_at = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, nextRunAt, sourceID)
+	if err != nil {
+		return fmt.Errorf("updating next_run_at for source %s: %w", sourceID, err)
+	}
+	return nil
+}
+
+func (r *PostgresSourceRepository) RecordJobResult(ctx context.Context, sourceID uuid.UUID, success bool) error {
+	query := `UPDATE webdata_sources SET
+		total_runs = total_runs + 1,
+		successful_runs = CASE WHEN $1 THEN successful_runs + 1 ELSE successful_runs END,
+		failed_runs = CASE WHEN NOT $1 THEN failed_runs + 1 ELSE failed_runs END,
+		health_score = (CASE WHEN $1 THEN successful_runs + 1 ELSE successful_runs END)::float
+			/ NULLIF(total_runs + 1, 0),
+		last_run_at = NOW(),
+		updated_at = NOW()
+		WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, success, sourceID)
+	if err != nil {
+		return fmt.Errorf("recording job result for source %s: %w", sourceID, err)
+	}
+	return nil
+}
+
 func (r *PostgresSourceRepository) FindDueForScraping(ctx context.Context) ([]*entity.Source, error) {
 	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
-		priority, tier, extraction_schema, crawl_config, firecrawl_method, cron_expression, next_run_at, is_active,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, prompt, cron_expression, next_run_at, is_active,
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, created_at, updated_at
 		FROM webdata_sources
@@ -181,12 +207,12 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 	var priorityStr string
 	var tierVal int
 	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
-	var lastFailureReason, city, cronExpr, notes sql.NullString
+	var lastFailureReason, city, cronExpr, notes, prompt sql.NullString
 	var extractionSchemaRaw, crawlConfigRaw []byte
 
 	err := row.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
+		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &prompt, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
 		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -197,7 +223,7 @@ func (r *PostgresSourceRepository) scanSource(row *sql.Row) (*entity.Source, err
 		return nil, fmt.Errorf("scanning source: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, prompt, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
 }
 
 func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source, error) {
@@ -205,12 +231,12 @@ func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source
 	var priorityStr string
 	var tierVal int
 	var nextRunAt, lastRunAt, lastSuccessAt sql.NullTime
-	var lastFailureReason, city, cronExpr, notes sql.NullString
+	var lastFailureReason, city, cronExpr, notes, prompt sql.NullString
 	var extractionSchemaRaw, crawlConfigRaw []byte
 
 	err := rows.Scan(
 		&s.ID, &s.TenantID, &s.Name, &s.BaseURL, &s.Category, &s.SourceType, &city,
-		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &cronExpr, &nextRunAt, &s.IsActive,
+		&priorityStr, &tierVal, &extractionSchemaRaw, &crawlConfigRaw, &s.FirecrawlMethod, &prompt, &cronExpr, &nextRunAt, &s.IsActive,
 		&s.HealthScore, &s.TotalRuns, &s.SuccessfulRuns, &s.FailedRuns,
 		&lastRunAt, &lastSuccessAt, &lastFailureReason, &s.ConsecutiveFailures, &notes, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -218,12 +244,12 @@ func (r *PostgresSourceRepository) scanSourceRow(rows *sql.Rows) (*entity.Source
 		return nil, fmt.Errorf("scanning source row: %w", err)
 	}
 
-	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
+	return r.buildSource(&s, priorityStr, tierVal, city, cronExpr, notes, prompt, nextRunAt, lastRunAt, lastSuccessAt, lastFailureReason, extractionSchemaRaw, crawlConfigRaw)
 }
 
 func (r *PostgresSourceRepository) buildSource(
 	s *entity.Source, priorityStr string, tierVal int,
-	city, cronExpr, notes sql.NullString,
+	city, cronExpr, notes, prompt sql.NullString,
 	nextRunAt, lastRunAt, lastSuccessAt sql.NullTime,
 	lastFailureReason sql.NullString,
 	extractionSchemaRaw, crawlConfigRaw []byte,
@@ -253,6 +279,7 @@ func (r *PostgresSourceRepository) buildSource(
 	if city.Valid { s.City = city.String }
 	if cronExpr.Valid { s.CronExpression = cronExpr.String }
 	if notes.Valid { s.Notes = notes.String }
+	if prompt.Valid { s.Prompt = prompt.String }
 	if nextRunAt.Valid { s.NextRunAt = &nextRunAt.Time }
 	if lastRunAt.Valid { s.LastRunAt = &lastRunAt.Time }
 	if lastSuccessAt.Valid { s.LastSuccessAt = &lastSuccessAt.Time }

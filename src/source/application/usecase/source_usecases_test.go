@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/source/application/request"
@@ -60,6 +61,28 @@ func (m *mockSourceRepo) Delete(ctx context.Context, tenantID, id uuid.UUID) err
 
 func (m *mockSourceRepo) FindDueForScraping(ctx context.Context) ([]*entity.Source, error) {
 	return nil, nil
+}
+
+func (m *mockSourceRepo) UpdateNextRunAt(ctx context.Context, sourceID uuid.UUID, nextRunAt time.Time) error {
+	s, ok := m.sources[sourceID.String()]
+	if !ok {
+		return errors.New("source not found")
+	}
+	s.NextRunAt = &nextRunAt
+	return nil
+}
+
+func (m *mockSourceRepo) RecordJobResult(ctx context.Context, sourceID uuid.UUID, success bool) error {
+	s, ok := m.sources[sourceID.String()]
+	if !ok {
+		return errors.New("source not found")
+	}
+	if success {
+		s.RecordSuccess()
+	} else {
+		s.RecordFailure("recorded via RecordJobResult")
+	}
+	return nil
 }
 
 // --- Helper ---

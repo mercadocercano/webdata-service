@@ -17,6 +17,7 @@ func NewRouter(
 	jobCtrl *scrapingcontroller.JobController,
 	productCtrl *productcontroller.ProductController,
 	statsCtrl *statscontroller.StatsController,
+	btProxyCtrl *productcontroller.BusinessTypeProxyController,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
@@ -52,11 +53,17 @@ func NewRouter(
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productCtrl.ListProducts)
 			r.Post("/bulk-delete", productCtrl.BulkDeleteProducts)
+			r.Post("/bulk-assign-business-type", productCtrl.BulkAssignBusinessType)
 			r.Get("/{id}", productCtrl.GetProduct)
 			r.Delete("/{id}", productCtrl.DeleteProduct)
 			r.Patch("/{id}", productCtrl.PatchProduct)
 			r.Get("/{id}/price-history", productCtrl.GetPriceHistory)
+			r.Put("/{id}/business-types", productCtrl.AssignBusinessTypes)
+			r.Delete("/{id}/business-types/{code}", productCtrl.RemoveBusinessType)
 		})
+
+		// Business Types (proxy to pim-service)
+		r.Get("/business-types", btProxyCtrl.ListBusinessTypes)
 
 		// Stats
 		r.Route("/stats", func(r chi.Router) {

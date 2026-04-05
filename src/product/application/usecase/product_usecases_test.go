@@ -67,6 +67,15 @@ func (r *failingProductRepo) BulkSoftDelete(_ context.Context, _ uuid.UUID, _ []
 func (r *failingProductRepo) UpdateBlocked(_ context.Context, _, _ uuid.UUID, _ bool) error {
 	return nil
 }
+func (r *failingProductRepo) SaveBusinessTypes(_ context.Context, _, _ uuid.UUID, _ []value_object.BusinessTypeAssignment) error {
+	return nil
+}
+func (r *failingProductRepo) RemoveBusinessType(_ context.Context, _, _ uuid.UUID, _ string) error {
+	return nil
+}
+func (r *failingProductRepo) FindBusinessTypesForProduct(_ context.Context, _, _ uuid.UUID) ([]value_object.BusinessTypeAssignment, error) {
+	return nil, nil
+}
 
 func (m *mockProductRepo) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	p, ok := m.products[id.String()]
@@ -134,6 +143,38 @@ func (m *mockProductRepo) UpdateBlocked(_ context.Context, _, id uuid.UUID, bloc
 	}
 	p.IsBlocked = blocked
 	return nil
+}
+
+func (m *mockProductRepo) SaveBusinessTypes(_ context.Context, _, productID uuid.UUID, assignments []value_object.BusinessTypeAssignment) error {
+	p, ok := m.products[productID.String()]
+	if !ok {
+		return errors.New("product not found")
+	}
+	p.BusinessTypes = assignments
+	return nil
+}
+
+func (m *mockProductRepo) RemoveBusinessType(_ context.Context, _, productID uuid.UUID, code string) error {
+	p, ok := m.products[productID.String()]
+	if !ok {
+		return errors.New("product not found")
+	}
+	var filtered []value_object.BusinessTypeAssignment
+	for _, bt := range p.BusinessTypes {
+		if bt.BusinessTypeCode != code {
+			filtered = append(filtered, bt)
+		}
+	}
+	p.BusinessTypes = filtered
+	return nil
+}
+
+func (m *mockProductRepo) FindBusinessTypesForProduct(_ context.Context, _, productID uuid.UUID) ([]value_object.BusinessTypeAssignment, error) {
+	p, ok := m.products[productID.String()]
+	if !ok {
+		return nil, errors.New("product not found")
+	}
+	return p.BusinessTypes, nil
 }
 
 // --- T-PRD-A01: ListProducts ---

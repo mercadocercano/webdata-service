@@ -131,6 +131,11 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 		args = append(args, "%"+filter.Query+"%")
 		argIdx++
 	}
+	if filter.BusinessTypeCode != "" {
+		where += fmt.Sprintf(" AND id IN (SELECT product_id FROM webdata_product_business_types WHERE business_type_code = $%d AND tenant_id = $%d)", argIdx, argIdx+1)
+		args = append(args, filter.BusinessTypeCode, tenantID)
+		argIdx += 2
+	}
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM webdata_products "+where, args...).Scan(&total); err != nil {
@@ -262,6 +267,74 @@ func (r *PostgresProductRepository) FindPriceHistory(ctx context.Context, tenant
 		records = append(records, rec)
 	}
 	return records, rows.Err()
+}
+
+func (r *PostgresProductRepository) SaveBusinessTypes(ctx context.Context, tenantID, productID uuid.UUID, assignments []value_object.BusinessTypeAssignment) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx,
+		`DELETE FROM webdata_product_business_types WHERE product_id = $1 AND tenant_id = $2`,
+		productID, tenantID,
+	)
+	if err != nil {
+		return fmt.Errorf("clearing existing business types: %w", err)
+	}
+
+	for _, a := range assignments {
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO webdata_product_business_types (product_id, business_type_code, business_type_name, tenant_id, created_at)
+			 VALUES ($1, $2, $3, $4, $5)`,
+			productID, a.BusinessTypeCode, a.BusinessTypeName, tenantID, a.CreatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("inserting business type assignment %q: %w", a.BusinessTypeCode, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *PostgresProductRepository) RemoveBusinessType(ctx context.Context, tenantID, productID uuid.UUID, code string) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM webdata_product_business_types WHERE product_id = $1 AND tenant_id = $2 AND business_type_code = $3`,
+		productID, tenantID, code,
+	)
+	if err != nil {
+		return fmt.Errorf("removing business type: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("business type %q not assigned to product", code)
+	}
+	return nil
+}
+
+func (r *PostgresProductRepository) FindBusinessTypesForProduct(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.BusinessTypeAssignment, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT business_type_code, business_type_name, created_at
+		 FROM webdata_product_business_types
+		 WHERE product_id = $1 AND tenant_id = $2
+		 ORDER BY created_at ASC`,
+		productID, tenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("finding business types for product: %w", err)
+	}
+	defer rows.Close()
+
+	var assignments []value_object.BusinessTypeAssignment
+	for rows.Next() {
+		var a value_object.BusinessTypeAssignment
+		if err := rows.Scan(&a.BusinessTypeCode, &a.BusinessTypeName, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning business type assignment: %w", err)
+		}
+		assignments = append(assignments, a)
+	}
+	return assignments, rows.Err()
 }
 
 func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedProduct, error) {

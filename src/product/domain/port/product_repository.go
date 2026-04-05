@@ -18,6 +18,9 @@ type ProductRepository interface {
 	UpdateBlocked(ctx context.Context, tenantID, id uuid.UUID, blocked bool) error
 	SavePriceRecord(ctx context.Context, record value_object.PriceRecord) error
 	FindPriceHistory(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.PriceRecord, error)
+	SaveBusinessTypes(ctx context.Context, tenantID, productID uuid.UUID, assignments []value_object.BusinessTypeAssignment) error
+	RemoveBusinessType(ctx context.Context, tenantID, productID uuid.UUID, code string) error
+	FindBusinessTypesForProduct(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.BusinessTypeAssignment, error)
 }
 
 type ProductFilter struct {
@@ -25,6 +28,7 @@ type ProductFilter struct {
 	Category           string
 	NormalizedCategory string
 	Brand              string
+	BusinessTypeCode   string
 	MinPrice           *float64
 	MaxPrice           *float64
 	Query              string

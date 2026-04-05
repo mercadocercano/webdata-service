@@ -193,6 +193,7 @@ func (a *FirecrawlAdapter) ScrapeJSON(ctx context.Context, url string, schema js
 		"url":         url,
 		"formats":     []string{"json"},
 		"jsonOptions": jsonOptions,
+		"timeout":     int(parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 120*time.Second).Milliseconds()),
 	}
 
 	respBody, err := a.doRequestWithRetry(ctx, "POST", "/scrape", payload)
@@ -257,6 +258,7 @@ func (a *FirecrawlAdapter) Scrape(ctx context.Context, url string, opts scraping
 	payload := map[string]interface{}{
 		"url":     url,
 		"formats": formats,
+		"timeout": int(parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 120*time.Second).Milliseconds()),
 	}
 
 	respBody, err := a.doRequestWithRetry(ctx, "POST", "/scrape", payload)

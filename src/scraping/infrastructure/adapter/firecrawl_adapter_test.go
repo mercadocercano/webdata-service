@@ -107,3 +107,120 @@ func TestFirecrawlAdapter_Extract_MissingAPIKey(t *testing.T) {
 		t.Fatal("expected error for missing API key, got nil")
 	}
 }
+
+// TestFirecrawlAdapter_ScrapeJSON_ReturnsStructuredProducts verifies that
+// ScrapeJSON calls /v1/scrape with formats:["json"] + jsonOptions and parses
+// the structured product list from data.json.products.
+func TestFirecrawlAdapter_ScrapeJSON_ReturnsStructuredProducts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method != http.MethodPost || r.URL.Path != "/scrape" {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Verify request body includes formats:["json"] and jsonOptions
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		formats, ok := body["formats"].([]interface{})
+		if !ok || len(formats) == 0 || formats[0] != "json" {
+			http.Error(w, "missing formats:[json]", http.StatusBadRequest)
+			return
+		}
+		if _, ok := body["jsonOptions"]; !ok {
+			http.Error(w, "missing jsonOptions", http.StatusBadRequest)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"json": map[string]interface{}{
+					"products": []map[string]interface{}{
+						{
+							"name":           "Heladera Frío 300L",
+							"price":          150000.0,
+							"original_price": 180000.0,
+							"url":            "https://cetrogar.com.ar/heladera-300",
+							"image_url":      "https://cetrogar.com.ar/img/heladera.jpg",
+							"brand":          "Drean",
+							"category":       "heladera",
+							"sku":            "HEL-300",
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	adapter := newFirecrawlAdapterWithBaseURL("test-api-key", server.URL)
+	schema := json.RawMessage(`{"type":"object","properties":{"products":{"type":"array"}}}`)
+
+	products, err := adapter.ScrapeJSON(
+		context.Background(),
+		"https://cetrogar.com.ar/electrodomesticos.html",
+		schema,
+		scrapingport.ExtractOptions{Prompt: "Extrae electrodomésticos"},
+	)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+
+	p := products[0]
+	if p.Title != "Heladera Frío 300L" {
+		t.Errorf("Title: expected %q, got %q", "Heladera Frío 300L", p.Title)
+	}
+	if p.Price == nil || *p.Price != 150000.0 {
+		t.Errorf("Price: expected 150000.0, got %v", p.Price)
+	}
+	if p.Brand != "Drean" {
+		t.Errorf("Brand: expected %q, got %q", "Drean", p.Brand)
+	}
+	if p.SKU != "HEL-300" {
+		t.Errorf("SKU: expected %q, got %q", "HEL-300", p.SKU)
+	}
+}
+
+// TestFirecrawlAdapter_ScrapeJSON_EmptyProducts verifies that an empty product
+// list in data.json.products returns an empty slice without error.
+func TestFirecrawlAdapter_ScrapeJSON_EmptyProducts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"json": map[string]interface{}{
+					"products": []interface{}{},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	adapter := newFirecrawlAdapterWithBaseURL("test-api-key", server.URL)
+	products, err := adapter.ScrapeJSON(context.Background(), "https://example.com", json.RawMessage(`{}`), scrapingport.ExtractOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 0 {
+		t.Errorf("expected 0 products, got %d", len(products))
+	}
+}
+
+// TestFirecrawlAdapter_ScrapeJSON_MissingAPIKey verifies early return when key is absent.
+func TestFirecrawlAdapter_ScrapeJSON_MissingAPIKey(t *testing.T) {
+	adapter := newFirecrawlAdapterWithBaseURL("", "http://localhost")
+	_, err := adapter.ScrapeJSON(context.Background(), "https://example.com", nil, scrapingport.ExtractOptions{})
+	if err == nil {
+		t.Fatal("expected error for missing API key, got nil")
+	}
+}

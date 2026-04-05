@@ -7,6 +7,7 @@ import (
 
 type ScraperPort interface {
 	Extract(ctx context.Context, url string, schema json.RawMessage, opts ExtractOptions) ([]RawProduct, error)
+	ScrapeJSON(ctx context.Context, url string, schema json.RawMessage, opts ExtractOptions) ([]RawProduct, error)
 	Scrape(ctx context.Context, url string, opts ScrapeOptions) (string, error)
 	Crawl(ctx context.Context, url string, opts CrawlOptions) (string, error)
 	CrawlStatus(ctx context.Context, jobID string) (CrawlResult, error)

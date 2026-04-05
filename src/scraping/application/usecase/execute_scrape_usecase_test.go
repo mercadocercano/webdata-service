@@ -21,12 +21,18 @@ import (
 // --- Mock scraper ---
 
 type spyScraper struct {
-	scrapeCalled bool
-	crawlCalled  bool
-	products     []scrapeport.RawProduct
+	scrapeCalled     bool
+	scrapeJSONCalled bool
+	crawlCalled      bool
+	products         []scrapeport.RawProduct
 }
 
 func (s *spyScraper) Extract(_ context.Context, _ string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	return s.products, nil
+}
+
+func (s *spyScraper) ScrapeJSON(_ context.Context, _ string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	s.scrapeJSONCalled = true
 	return s.products, nil
 }
 
@@ -125,11 +131,16 @@ func TestExecuteScrapingUseCase_CrawlMethodReturnsErrorWithoutCallingFirecrawl(t
 	assert.False(t, spy.crawlCalled, "no debe llamar a Firecrawl cuando crawl no está implementado")
 }
 
-// --- T-SCR-B02: scrape method falla sin llamar a Firecrawl ---
+// --- T-SCR-B02: scrape method usa ScrapeJSON y retorna productos (MER-141) ---
 
-func TestExecuteScrapingUseCase_ScrapeMethodReturnsErrorWithoutCallingFirecrawl(t *testing.T) {
+func TestExecuteScrapingUseCase_ScrapeMethodCallsScrapeJSONAndSavesProducts(t *testing.T) {
 	// Arrange
-	spy := &spyScraper{}
+	price := 150000.0
+	spy := &spyScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Heladera 300L", URL: "https://cetrogar.com.ar/heladera", Price: &price},
+		},
+	}
 	sourceRepo := newMockSourceRepo()
 	jobRepo := newMockJobRepo()
 	tenantID := uuid.New()
@@ -143,10 +154,10 @@ func TestExecuteScrapingUseCase_ScrapeMethodReturnsErrorWithoutCallingFirecrawl(
 	// Act
 	err := uc.Execute(context.Background(), job)
 
-	// Assert — debe fallar con un mensaje claro, SIN llamar a Firecrawl
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "scrape")
-	assert.False(t, spy.scrapeCalled, "no debe llamar a Firecrawl cuando scrape no está implementado")
+	// Assert — scrape debe usar ScrapeJSON y completar sin error
+	require.NoError(t, err)
+	assert.True(t, spy.scrapeJSONCalled, "debe llamar a ScrapeJSON para method=scrape")
+	assert.False(t, spy.scrapeCalled, "no debe llamar a Scrape (HTML) para extracción de productos")
 }
 
 // --- T-SCR-B03: extract method sigue funcionando normalmente ---

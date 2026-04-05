@@ -89,13 +89,14 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 func (uc *ExecuteScrapingUseCase) fetchProducts(ctx context.Context, source *sourceentity.Source) ([]scrapingport.RawProduct, error) {
 	switch source.FirecrawlMethod {
 	case "extract", "":
-		return uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{})
+		return uc.scraper.Extract(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{
+			Prompt: source.Prompt,
+		})
 
 	case "scrape":
-		// Structured product extraction from scraped HTML/Markdown is not yet implemented.
-		// Calling Firecrawl here would consume credits with no benefit.
-		// Migrate source to firecrawl_method='extract' to use LLM-powered product extraction.
-		return nil, fmt.Errorf("firecrawl_method 'scrape' is not yet supported for product extraction; migrate source %s to use 'extract' method", source.ID)
+		return uc.scraper.ScrapeJSON(ctx, source.BaseURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{
+			Prompt: source.Prompt,
+		})
 
 	case "crawl":
 		// Async crawl polling + product extraction is not yet implemented.

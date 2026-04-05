@@ -54,6 +54,7 @@ func NewRouter(
 			r.Get("/", productCtrl.ListProducts)
 			r.Post("/bulk-delete", productCtrl.BulkDeleteProducts)
 			r.Post("/bulk-assign-business-type", productCtrl.BulkAssignBusinessType)
+			r.Post("/auto-assign-business-types", productCtrl.AutoMatchBusinessTypes)
 			r.Get("/{id}", productCtrl.GetProduct)
 			r.Delete("/{id}", productCtrl.DeleteProduct)
 			r.Patch("/{id}", productCtrl.PatchProduct)

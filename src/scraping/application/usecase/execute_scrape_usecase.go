@@ -62,8 +62,7 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 		reason := fmt.Sprintf("%s failed: %v", source.FirecrawlMethod, err)
 		_ = job.Fail(reason)
 		_ = uc.jobRepo.Update(ctx, job)
-		source.RecordFailure(reason)
-		_ = uc.sourceRepo.Update(ctx, source)
+		_ = uc.sourceRepo.RecordJobResult(ctx, source.ID, false)
 		return err
 	}
 
@@ -81,14 +80,12 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 	saved := created + updated
 	if upsertErr != nil {
 		_ = job.Fail(upsertErr.Error())
-		source.RecordFailure(upsertErr.Error())
 	} else {
 		_ = job.Complete(found, saved)
-		source.RecordSuccess()
 	}
 
 	_ = uc.jobRepo.Update(ctx, job)
-	_ = uc.sourceRepo.Update(ctx, source)
+	_ = uc.sourceRepo.RecordJobResult(ctx, source.ID, upsertErr == nil)
 	return upsertErr
 }
 

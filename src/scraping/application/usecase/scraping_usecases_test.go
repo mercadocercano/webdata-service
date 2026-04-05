@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/scraping/application/usecase"
@@ -18,7 +19,19 @@ import (
 // --- Mock source repo ---
 
 type mockSourceRepo struct {
-	sources map[string]*sourceentity.Source
+	sources            map[string]*sourceentity.Source
+	recordJobResultCalls []recordJobResultCall
+	updateNextRunAtCalls []updateNextRunAtCall
+}
+
+type recordJobResultCall struct {
+	SourceID uuid.UUID
+	Success  bool
+}
+
+type updateNextRunAtCall struct {
+	SourceID  uuid.UUID
+	NextRunAt time.Time
 }
 
 func newMockSourceRepo() *mockSourceRepo {
@@ -54,6 +67,21 @@ func (m *mockSourceRepo) Delete(ctx context.Context, tenantID, id uuid.UUID) err
 
 func (m *mockSourceRepo) FindDueForScraping(ctx context.Context) ([]*sourceentity.Source, error) {
 	return nil, nil
+}
+
+func (m *mockSourceRepo) UpdateNextRunAt(ctx context.Context, sourceID uuid.UUID, nextRunAt time.Time) error {
+	m.updateNextRunAtCalls = append(m.updateNextRunAtCalls, updateNextRunAtCall{SourceID: sourceID, NextRunAt: nextRunAt})
+	s, ok := m.sources[sourceID.String()]
+	if !ok {
+		return errors.New("source not found")
+	}
+	s.NextRunAt = &nextRunAt
+	return nil
+}
+
+func (m *mockSourceRepo) RecordJobResult(ctx context.Context, sourceID uuid.UUID, success bool) error {
+	m.recordJobResultCalls = append(m.recordJobResultCalls, recordJobResultCall{SourceID: sourceID, Success: success})
+	return nil
 }
 
 // --- Mock job repo ---

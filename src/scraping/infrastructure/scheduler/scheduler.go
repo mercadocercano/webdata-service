@@ -86,8 +86,7 @@ func (s *Scheduler) createJob(ctx context.Context, src *sourceentity.Source, pag
 
 func (s *Scheduler) lockSourceUntilProcessed(ctx context.Context, src *sourceentity.Source) {
 	nextRun := time.Now().Add(schedulingLockDuration)
-	src.NextRunAt = &nextRun
-	if err := s.sourceRepo.Update(ctx, src); err != nil {
+	if err := s.sourceRepo.UpdateNextRunAt(ctx, src.ID, nextRun); err != nil {
 		fmt.Printf("[scheduler] error locking next_run_at for source %s: %v\n", src.ID, err)
 	}
 }

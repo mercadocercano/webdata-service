@@ -13,6 +13,7 @@
 package controller_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -239,6 +240,59 @@ func TestProductController_E2E_ListGetPriceHistory(t *testing.T) {
 	resp = doGet(t, client, baseProducts+"/"+uuid.New().String(), token, tenantID.String())
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "unknown product should return 404")
 	resp.Body.Close()
+
+	// ── 7. PATCH product — block ──────────────────────────────────────────
+	patchBody, _ := json.Marshal(map[string]bool{"is_blocked": true})
+	patchReq, _ := http.NewRequest(http.MethodPatch, baseProducts+"/"+productID, bytes.NewReader(patchBody))
+	patchReq.Header.Set("Authorization", "Bearer "+token)
+	patchReq.Header.Set("X-Tenant-ID", tenantID.String())
+	patchReq.Header.Set("Content-Type", "application/json")
+	resp, err = client.Do(patchReq)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "PATCH /products/:id should return 204")
+	resp.Body.Close()
+
+	// ── 8. Verify blocked product shows is_blocked=true ───────────────────
+	resp = doGet(t, client, baseProducts+"/"+productID, token, tenantID.String())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var blockedResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&blockedResp))
+	resp.Body.Close()
+	blockedProduct := blockedResp["data"].(map[string]any)
+	assert.Equal(t, true, blockedProduct["is_blocked"], "product should be blocked")
+
+	// ── 9. DELETE product ─────────────────────────────────────────────────
+	delReq, _ := http.NewRequest(http.MethodDelete, baseProducts+"/"+productID, nil)
+	delReq.Header.Set("Authorization", "Bearer "+token)
+	delReq.Header.Set("X-Tenant-ID", tenantID.String())
+	resp, err = client.Do(delReq)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode, "DELETE /products/:id should return 204")
+	resp.Body.Close()
+
+	// ── 10. List should return only 1 product (hidden excluded) ──────────
+	resp = doGet(t, client, baseProducts+"/", token, tenantID.String())
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var afterDelResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&afterDelResp))
+	resp.Body.Close()
+	afterDelData := afterDelResp["data"].([]any)
+	assert.Len(t, afterDelData, 1, "should return only 1 product after soft delete")
+
+	// ── 11. Bulk delete remaining product ─────────────────────────────────
+	remainingID := afterDelData[0].(map[string]any)["id"].(string)
+	bulkBody, _ := json.Marshal(map[string][]string{"ids": {remainingID}})
+	bulkReq, _ := http.NewRequest(http.MethodPost, baseProducts+"/bulk-delete", bytes.NewReader(bulkBody))
+	bulkReq.Header.Set("Authorization", "Bearer "+token)
+	bulkReq.Header.Set("X-Tenant-ID", tenantID.String())
+	bulkReq.Header.Set("Content-Type", "application/json")
+	resp, err = client.Do(bulkReq)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "POST /products/bulk-delete should return 200")
+	var bulkResp map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&bulkResp))
+	resp.Body.Close()
+	assert.Equal(t, float64(1), bulkResp["deleted"], "should have deleted 1 product")
 }
 
 func TestProductController_E2E_PriceHistoryTracking(t *testing.T) {

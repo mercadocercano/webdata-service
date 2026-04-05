@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -15,14 +16,23 @@ type ProductController struct {
 	listUC       *productusecase.ListProductsUseCase
 	getUC        *productusecase.GetProductUseCase
 	priceHistUC  *productusecase.GetPriceHistoryUseCase
+	deleteUC     *productusecase.DeleteProductUseCase
+	bulkDeleteUC *productusecase.BulkDeleteProductsUseCase
+	updateUC     *productusecase.UpdateProductUseCase
 }
 
 func NewProductController(
 	listUC *productusecase.ListProductsUseCase,
 	getUC *productusecase.GetProductUseCase,
 	priceHistUC *productusecase.GetPriceHistoryUseCase,
+	deleteUC *productusecase.DeleteProductUseCase,
+	bulkDeleteUC *productusecase.BulkDeleteProductsUseCase,
+	updateUC *productusecase.UpdateProductUseCase,
 ) *ProductController {
-	return &ProductController{listUC: listUC, getUC: getUC, priceHistUC: priceHistUC}
+	return &ProductController{
+		listUC: listUC, getUC: getUC, priceHistUC: priceHistUC,
+		deleteUC: deleteUC, bulkDeleteUC: bulkDeleteUC, updateUC: updateUC,
+	}
 }
 
 func (c *ProductController) ListProducts(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +115,100 @@ func (c *ProductController) GetPriceHistory(w http.ResponseWriter, r *http.Reque
 	}
 
 	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{"data": records})
+}
+
+func (c *ProductController) DeleteProduct(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid product ID")
+		return
+	}
+
+	if err := c.deleteUC.Execute(r.Context(), tenantID, id); err != nil {
+		middleware.JSONError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (c *ProductController) BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(body.IDs) == 0 {
+		middleware.JSONError(w, http.StatusBadRequest, "ids array is required")
+		return
+	}
+
+	ids := make([]uuid.UUID, 0, len(body.IDs))
+	for _, raw := range body.IDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			middleware.JSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid UUID: %s", raw))
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	deleted, err := c.bulkDeleteUC.Execute(r.Context(), tenantID, ids)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, map[string]int64{"deleted": deleted})
+}
+
+func (c *ProductController) PatchProduct(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid product ID")
+		return
+	}
+
+	var body struct {
+		IsBlocked *bool `json:"is_blocked"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if body.IsBlocked == nil {
+		middleware.JSONError(w, http.StatusBadRequest, "is_blocked field is required")
+		return
+	}
+
+	if err := c.updateUC.Execute(r.Context(), tenantID, id, *body.IsBlocked); err != nil {
+		middleware.JSONError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func parseIntQuery(r *http.Request, key string, defaultVal int) int {

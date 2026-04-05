@@ -78,6 +78,14 @@ func (r *noopProductRepo) FindPriceHistory(_ context.Context, _, _ uuid.UUID) ([
 	return nil, nil
 }
 
+func (r *noopProductRepo) SoftDelete(_ context.Context, _, _ uuid.UUID) error { return nil }
+func (r *noopProductRepo) BulkSoftDelete(_ context.Context, _ uuid.UUID, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+func (r *noopProductRepo) UpdateBlocked(_ context.Context, _, _ uuid.UUID, _ bool) error {
+	return nil
+}
+
 // --- Helper: build executeScrapingUseCase ---
 
 func buildExecuteUC(scraper scrapeport.ScraperPort) *scrapeuse.ExecuteScrapingUseCase {

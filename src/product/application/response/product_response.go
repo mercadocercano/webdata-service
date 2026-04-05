@@ -28,6 +28,8 @@ type ProductResponse struct {
 	NormalizedCategory string          `json:"normalized_category,omitempty"`
 	ConfidenceScore    *float64        `json:"confidence_score,omitempty"`
 	ContentHash        string          `json:"content_hash"`
+	IsBlocked          bool            `json:"is_blocked"`
+	HiddenAt           *time.Time      `json:"hidden_at,omitempty"`
 	FirstSeenAt        time.Time       `json:"first_seen_at"`
 	LastSeenAt         time.Time       `json:"last_seen_at"`
 	PriceChangedAt     *time.Time      `json:"price_changed_at,omitempty"`
@@ -57,6 +59,8 @@ func FromProduct(p *entity.ScrapedProduct) ProductResponse {
 		NormalizedCategory: p.NormalizedCategory,
 		ConfidenceScore:    p.ConfidenceScore,
 		ContentHash:        p.ContentHash.String(),
+		IsBlocked:          p.IsBlocked,
+		HiddenAt:           p.HiddenAt,
 		FirstSeenAt:        p.FirstSeenAt,
 		LastSeenAt:         p.LastSeenAt,
 		PriceChangedAt:     p.PriceChangedAt,

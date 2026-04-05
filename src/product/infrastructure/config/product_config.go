@@ -5,6 +5,7 @@ import (
 
 	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
 	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
+	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	productport "github.com/mercadocercano/webdata-service/src/product/domain/port"
 )
@@ -27,7 +28,9 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	assignBTUC := productusecase.NewAssignBusinessTypesUseCase(repo)
 	removeBTUC := productusecase.NewRemoveBusinessTypeUseCase(repo)
 	bulkAssignBTUC := productusecase.NewBulkAssignBusinessTypeUseCase(repo)
-	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC)
+	btProvider := productadapter.NewPIMBusinessTypeProvider()
+	autoMatchBTUC := productusecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC)
 
 	return &ProductModule{
 		Repo:       repo,

@@ -23,6 +23,16 @@ type ProductRepository interface {
 	FindBusinessTypesForProduct(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.BusinessTypeAssignment, error)
 }
 
+// ProductSummary is a lightweight projection used by the auto-match use case.
+type ProductSummary struct {
+	ID                 uuid.UUID
+	Title              string
+	Category           string
+	NormalizedCategory string
+	Brand              string
+	BusinessTypes      []value_object.BusinessTypeAssignment
+}
+
 type ProductFilter struct {
 	SourceID           *uuid.UUID
 	Category           string

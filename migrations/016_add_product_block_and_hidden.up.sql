@@ -1,0 +1,2 @@
+ALTER TABLE webdata_products ADD COLUMN is_blocked BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE webdata_products ADD COLUMN hidden_at TIMESTAMP WITH TIME ZONE;

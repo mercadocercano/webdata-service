@@ -13,6 +13,9 @@ type ProductRepository interface {
 	FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error)
 	FindByContentHash(ctx context.Context, tenantID, sourceID uuid.UUID, hash value_object.ContentHash) (*entity.ScrapedProduct, error)
 	FindAll(ctx context.Context, tenantID uuid.UUID, filter ProductFilter) ([]*entity.ScrapedProduct, int, error)
+	SoftDelete(ctx context.Context, tenantID, id uuid.UUID) error
+	BulkSoftDelete(ctx context.Context, tenantID uuid.UUID, ids []uuid.UUID) (int64, error)
+	UpdateBlocked(ctx context.Context, tenantID, id uuid.UUID, blocked bool) error
 	SavePriceRecord(ctx context.Context, record value_object.PriceRecord) error
 	FindPriceHistory(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.PriceRecord, error)
 }

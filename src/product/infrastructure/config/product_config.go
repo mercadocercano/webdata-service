@@ -21,7 +21,10 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	listUC := productusecase.NewListProductsUseCase(repo)
 	getUC := productusecase.NewGetProductUseCase(repo)
 	priceHistUC := productusecase.NewGetPriceHistoryUseCase(repo)
-	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC)
+	deleteUC := productusecase.NewDeleteProductUseCase(repo)
+	bulkDeleteUC := productusecase.NewBulkDeleteProductsUseCase(repo)
+	updateUC := productusecase.NewUpdateProductUseCase(repo)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC)
 
 	return &ProductModule{
 		Repo:       repo,

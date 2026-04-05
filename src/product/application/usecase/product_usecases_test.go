@@ -60,6 +60,14 @@ func (r *failingProductRepo) FindPriceHistory(_ context.Context, _, _ uuid.UUID)
 	return nil, nil
 }
 
+func (r *failingProductRepo) SoftDelete(_ context.Context, _, _ uuid.UUID) error { return nil }
+func (r *failingProductRepo) BulkSoftDelete(_ context.Context, _ uuid.UUID, _ []uuid.UUID) (int64, error) {
+	return 0, nil
+}
+func (r *failingProductRepo) UpdateBlocked(_ context.Context, _, _ uuid.UUID, _ bool) error {
+	return nil
+}
+
 func (m *mockProductRepo) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	p, ok := m.products[id.String()]
 	if !ok {
@@ -98,6 +106,34 @@ func (m *mockProductRepo) FindPriceHistory(ctx context.Context, tenantID, produc
 		}
 	}
 	return result, nil
+}
+
+func (m *mockProductRepo) SoftDelete(_ context.Context, _, id uuid.UUID) error {
+	if _, ok := m.products[id.String()]; !ok {
+		return errors.New("product not found")
+	}
+	delete(m.products, id.String())
+	return nil
+}
+
+func (m *mockProductRepo) BulkSoftDelete(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (int64, error) {
+	var count int64
+	for _, id := range ids {
+		if _, ok := m.products[id.String()]; ok {
+			delete(m.products, id.String())
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (m *mockProductRepo) UpdateBlocked(_ context.Context, _, id uuid.UUID, blocked bool) error {
+	p, ok := m.products[id.String()]
+	if !ok {
+		return errors.New("product not found")
+	}
+	p.IsBlocked = blocked
+	return nil
 }
 
 // --- T-PRD-A01: ListProducts ---
@@ -204,6 +240,85 @@ func TestUpsertProductsUseCase_SkipsProductsWithEmptyTitle(t *testing.T) {
 }
 
 // --- T-PRD-A03: GetPriceHistory ordered ---
+
+// --- T-PRD-A05: DeleteProduct ---
+
+func TestDeleteProductUseCase_SoftDeletes(t *testing.T) {
+	repo := newMockProductRepo()
+	tenantID := uuid.New()
+	sourceID := uuid.New()
+
+	p, _ := entity.NewScrapedProduct(entity.CreateProductParams{
+		TenantID: tenantID, SourceID: sourceID,
+		Title: "To delete", URL: "https://x.com/del",
+		ContentHash: value_object.GenerateContentHash(tenantID, sourceID, "To delete", "https://x.com/del"),
+	})
+	_, _ = repo.Upsert(context.Background(), p)
+
+	uc := usecase.NewDeleteProductUseCase(repo)
+	err := uc.Execute(context.Background(), tenantID, p.ID)
+	require.NoError(t, err)
+	assert.Len(t, repo.products, 0)
+}
+
+func TestDeleteProductUseCase_NotFound(t *testing.T) {
+	repo := newMockProductRepo()
+	uc := usecase.NewDeleteProductUseCase(repo)
+	err := uc.Execute(context.Background(), uuid.New(), uuid.New())
+	assert.Error(t, err)
+}
+
+// --- T-PRD-A06: BulkDeleteProducts ---
+
+func TestBulkDeleteProductsUseCase_DeletesMultiple(t *testing.T) {
+	repo := newMockProductRepo()
+	tenantID := uuid.New()
+	sourceID := uuid.New()
+
+	var ids []uuid.UUID
+	for i := 0; i < 3; i++ {
+		p, _ := entity.NewScrapedProduct(entity.CreateProductParams{
+			TenantID: tenantID, SourceID: sourceID,
+			Title: "Prod", URL: "https://x.com/" + uuid.New().String(),
+			ContentHash: value_object.GenerateContentHash(tenantID, sourceID, "Prod", uuid.New().String()),
+		})
+		_, _ = repo.Upsert(context.Background(), p)
+		ids = append(ids, p.ID)
+	}
+
+	uc := usecase.NewBulkDeleteProductsUseCase(repo)
+	deleted, err := uc.Execute(context.Background(), tenantID, ids[:2])
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), deleted)
+	assert.Len(t, repo.products, 1)
+}
+
+// --- T-PRD-A07: UpdateProduct (block) ---
+
+func TestUpdateProductUseCase_BlocksProduct(t *testing.T) {
+	repo := newMockProductRepo()
+	tenantID := uuid.New()
+	sourceID := uuid.New()
+
+	p, _ := entity.NewScrapedProduct(entity.CreateProductParams{
+		TenantID: tenantID, SourceID: sourceID,
+		Title: "To block", URL: "https://x.com/block",
+		ContentHash: value_object.GenerateContentHash(tenantID, sourceID, "To block", "https://x.com/block"),
+	})
+	_, _ = repo.Upsert(context.Background(), p)
+
+	uc := usecase.NewUpdateProductUseCase(repo)
+	err := uc.Execute(context.Background(), tenantID, p.ID, true)
+	require.NoError(t, err)
+	assert.True(t, repo.products[p.ID.String()].IsBlocked)
+}
+
+func TestUpdateProductUseCase_NotFound(t *testing.T) {
+	repo := newMockProductRepo()
+	uc := usecase.NewUpdateProductUseCase(repo)
+	err := uc.Execute(context.Background(), uuid.New(), uuid.New(), true)
+	assert.Error(t, err)
+}
 
 func TestGetPriceHistoryUseCase_ReturnsHistory(t *testing.T) {
 	repo := newMockProductRepo()

@@ -51,7 +51,10 @@ func NewRouter(
 		// Products
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productCtrl.ListProducts)
+			r.Post("/bulk-delete", productCtrl.BulkDeleteProducts)
 			r.Get("/{id}", productCtrl.GetProduct)
+			r.Delete("/{id}", productCtrl.DeleteProduct)
+			r.Patch("/{id}", productCtrl.PatchProduct)
 			r.Get("/{id}/price-history", productCtrl.GetPriceHistory)
 		})
 

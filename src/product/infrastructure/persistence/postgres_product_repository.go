@@ -27,7 +27,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 		INSERT INTO webdata_products (
 			id, tenant_id, source_id, job_id, title, price, currency, original_price,
 			url, image_url, description, brand, category, sku, ean, in_stock,
-			normalized_category, confidence_score, content_hash,
+			normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 			first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
 		ON CONFLICT (tenant_id, source_id, content_hash) DO UPDATE SET
@@ -41,6 +41,8 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 			url = EXCLUDED.url,
 			in_stock = EXCLUDED.in_stock,
 			updated_at = EXCLUDED.updated_at
+		WHERE webdata_products.is_blocked = false
+		  AND webdata_products.hidden_at IS NULL
 		RETURNING (xmax = 0) AS inserted`
 
 	// Use interface{} nil so lib/pq sends NULL for JSONB, not an empty byte slice.
@@ -97,6 +99,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 	offset := (page - 1) * pageSize
 
 	where, args, argIdx := database.TenantWhereClause(tenantID)
+	where += " AND hidden_at IS NULL"
 
 	if filter.SourceID != nil {
 		where += fmt.Sprintf(" AND source_id=$%d", argIdx)
@@ -168,6 +171,64 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 	return products, total, rows.Err()
 }
 
+func (r *PostgresProductRepository) SoftDelete(ctx context.Context, tenantID, id uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE webdata_products SET hidden_at = NOW(), updated_at = NOW() WHERE tenant_id = $1 AND id = $2 AND hidden_at IS NULL`,
+		tenantID, id,
+	)
+	if err != nil {
+		return fmt.Errorf("soft deleting product: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return exception.ProductNotFoundError{}
+	}
+	return nil
+}
+
+func (r *PostgresProductRepository) BulkSoftDelete(ctx context.Context, tenantID uuid.UUID, ids []uuid.UUID) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	query := `UPDATE webdata_products SET hidden_at = NOW(), updated_at = NOW() WHERE tenant_id = $1 AND hidden_at IS NULL AND id = ANY($2)`
+	idStrs := make([]string, len(ids))
+	for i, id := range ids {
+		idStrs[i] = id.String()
+	}
+	res, err := r.db.ExecContext(ctx, query, tenantID, fmt.Sprintf("{%s}", joinStrings(idStrs, ",")))
+	if err != nil {
+		return 0, fmt.Errorf("bulk soft deleting products: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+func (r *PostgresProductRepository) UpdateBlocked(ctx context.Context, tenantID, id uuid.UUID, blocked bool) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE webdata_products SET is_blocked = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2 AND hidden_at IS NULL`,
+		tenantID, id, blocked,
+	)
+	if err != nil {
+		return fmt.Errorf("updating product blocked status: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return exception.ProductNotFoundError{}
+	}
+	return nil
+}
+
+func joinStrings(s []string, sep string) string {
+	result := ""
+	for i, v := range s {
+		if i > 0 {
+			result += sep
+		}
+		result += v
+	}
+	return result
+}
+
 func (r *PostgresProductRepository) SavePriceRecord(ctx context.Context, record value_object.PriceRecord) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO webdata_price_history (id, tenant_id, product_id, price, recorded_at) VALUES ($1,$2,$3,$4,$5)`,
@@ -208,14 +269,14 @@ func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedPr
 	var jobID sql.NullString
 	var price, originalPrice, confidenceScore sql.NullFloat64
 	var imageURL, description, brand, category, sku, ean, normalizedCategory sql.NullString
-	var priceChangedAt sql.NullTime
+	var hiddenAt, priceChangedAt sql.NullTime
 	var rawData []byte
 	var contentHashStr string
 
 	err := row.Scan(
 		&p.ID, &p.TenantID, &p.SourceID, &jobID, &p.Title, &price, &p.Currency, &originalPrice,
 		&p.URL, &imageURL, &description, &brand, &category, &sku, &ean, &p.InStock,
-		&normalizedCategory, &confidenceScore, &contentHashStr,
+		&normalizedCategory, &confidenceScore, &contentHashStr, &p.IsBlocked, &hiddenAt,
 		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -223,6 +284,10 @@ func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedPr
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scanning product: %w", err)
+	}
+
+	if hiddenAt.Valid {
+		p.HiddenAt = &hiddenAt.Time
 	}
 
 	return buildProduct(&p, jobID, price, originalPrice, confidenceScore,
@@ -235,18 +300,22 @@ func (r *PostgresProductRepository) scanProductRow(rows *sql.Rows) (*entity.Scra
 	var jobID sql.NullString
 	var price, originalPrice, confidenceScore sql.NullFloat64
 	var imageURL, description, brand, category, sku, ean, normalizedCategory sql.NullString
-	var priceChangedAt sql.NullTime
+	var hiddenAt, priceChangedAt sql.NullTime
 	var rawData []byte
 	var contentHashStr string
 
 	err := rows.Scan(
 		&p.ID, &p.TenantID, &p.SourceID, &jobID, &p.Title, &price, &p.Currency, &originalPrice,
 		&p.URL, &imageURL, &description, &brand, &category, &sku, &ean, &p.InStock,
-		&normalizedCategory, &confidenceScore, &contentHashStr,
+		&normalizedCategory, &confidenceScore, &contentHashStr, &p.IsBlocked, &hiddenAt,
 		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scanning product row: %w", err)
+	}
+
+	if hiddenAt.Valid {
+		p.HiddenAt = &hiddenAt.Time
 	}
 
 	return buildProduct(&p, jobID, price, originalPrice, confidenceScore,

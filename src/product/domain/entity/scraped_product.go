@@ -29,6 +29,8 @@ type ScrapedProduct struct {
 	NormalizedCategory string
 	ConfidenceScore    *float64
 	ContentHash        value_object.ContentHash
+	IsBlocked          bool
+	HiddenAt           *time.Time
 	FirstSeenAt        time.Time
 	LastSeenAt         time.Time
 	PriceChangedAt     *time.Time

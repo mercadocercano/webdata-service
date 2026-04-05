@@ -15,6 +15,7 @@ type ScrapingJob struct {
 	Status          value_object.JobStatus
 	TriggerType     value_object.TriggerType
 	FirecrawlJobID  string
+	Page            int
 	ProductsFound   int
 	ProductsSaved   int
 	ErrorMessage    string
@@ -40,6 +41,15 @@ func NewScrapingJob(tenantID, sourceID uuid.UUID, triggerType string) (*Scraping
 		CreatedAt:   time.Now(),
 		MaxRetries:  3,
 	}, nil
+}
+
+func NewPaginatedScrapingJob(tenantID, sourceID uuid.UUID, triggerType string, page int) (*ScrapingJob, error) {
+	job, err := NewScrapingJob(tenantID, sourceID, triggerType)
+	if err != nil {
+		return nil, err
+	}
+	job.Page = page
+	return job, nil
 }
 
 // NewJobStatusFromString is a convenience for test assertions.

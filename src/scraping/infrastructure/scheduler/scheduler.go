@@ -48,20 +48,39 @@ func (s *Scheduler) scheduleRuns(ctx context.Context) {
 	}
 
 	for _, src := range sources {
-		job, err := entity.NewScrapingJob(src.TenantID, src.ID, "scheduled")
-		if err != nil {
-			fmt.Printf("[scheduler] error creating job for source %s: %v\n", src.ID, err)
-			continue
-		}
-
-		if err := s.jobRepo.Save(ctx, job); err != nil {
-			fmt.Printf("[scheduler] error saving job for source %s: %v\n", src.ID, err)
-			continue
+		maxPages := src.CrawlConfig.MaxPages
+		if maxPages <= 0 {
+			// No pagination: create a single job (page=0, legacy behavior).
+			s.createJob(ctx, src, 0)
+		} else {
+			// Pagination: create one job per page (1..MaxPages).
+			for page := 1; page <= maxPages; page++ {
+				s.createJob(ctx, src, page)
+			}
 		}
 
 		// Avanzar next_run_at para evitar que el scheduler cree jobs duplicados
 		// antes de que el worker procese este job.
 		s.lockSourceUntilProcessed(ctx, src)
+	}
+}
+
+func (s *Scheduler) createJob(ctx context.Context, src *sourceentity.Source, page int) {
+	var job *entity.ScrapingJob
+	var err error
+
+	if page > 0 {
+		job, err = entity.NewPaginatedScrapingJob(src.TenantID, src.ID, "scheduled", page)
+	} else {
+		job, err = entity.NewScrapingJob(src.TenantID, src.ID, "scheduled")
+	}
+	if err != nil {
+		fmt.Printf("[scheduler] error creating job for source %s page %d: %v\n", src.ID, page, err)
+		return
+	}
+
+	if err := s.jobRepo.Save(ctx, job); err != nil {
+		fmt.Printf("[scheduler] error saving job for source %s page %d: %v\n", src.ID, page, err)
 	}
 }
 

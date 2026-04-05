@@ -162,6 +162,132 @@ func TestExecuteScrapingUseCase_ScrapeMethodCallsScrapeJSONAndSavesProducts(t *t
 
 // --- T-SCR-B03: extract method sigue funcionando normalmente ---
 
+// --- T-SCR-B04: BuildPaginatedURL ---
+
+func TestBuildPaginatedURL_SimpleURL(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/products", "page", 2)
+	assert.Equal(t, "https://example.com/products?page=2", result)
+}
+
+func TestBuildPaginatedURL_URLWithExistingQueryParams(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/products?category=food", "page", 3)
+	assert.Contains(t, result, "page=3")
+	assert.Contains(t, result, "category=food")
+}
+
+func TestBuildPaginatedURL_CustomPageParam(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://www.electromisiones.com.ar/642-electrodomesticos", "p", 2)
+	assert.Equal(t, "https://www.electromisiones.com.ar/642-electrodomesticos?p=2", result)
+}
+
+func TestBuildPaginatedURL_Page1(t *testing.T) {
+	result := scrapeuse.BuildPaginatedURL("https://example.com/store", "page", 1)
+	assert.Equal(t, "https://example.com/store?page=1", result)
+}
+
+// --- T-SCR-B05: paginated job uses paginated URL ---
+
+func TestExecuteScrapingUseCase_PaginatedJobAppendsPageParam(t *testing.T) {
+	// Arrange
+	price := 100.0
+	capturedURL := ""
+	spy := &urlCaptureScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Producto pagina 2", URL: "https://example.com/p/2", Price: &price},
+		},
+		captureURL: func(url string) { capturedURL = url },
+	}
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	source, _ := sourceentity.NewSource(sourceentity.CreateSourceParams{
+		TenantID:        tenantID,
+		Name:            "Paginated Source",
+		BaseURL:         "https://example.com/products",
+		Category:        "supermercados",
+		SourceType:      "ecommerce",
+		Priority:        "medium",
+		Tier:            2,
+		FirecrawlMethod: "extract",
+	})
+	source.CrawlConfig.MaxPages = 5
+	source.CrawlConfig.PageParam = "p"
+	_ = sourceRepo.Save(context.Background(), source)
+
+	job, _ := entity.NewPaginatedScrapingJob(tenantID, source.ID, "manual", 2)
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	// Act
+	err := uc.Execute(context.Background(), job)
+
+	// Assert — the URL sent to the scraper should include ?p=2
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/products?p=2", capturedURL)
+}
+
+func TestExecuteScrapingUseCase_NonPaginatedJobUsesBaseURL(t *testing.T) {
+	// Arrange
+	price := 100.0
+	capturedURL := ""
+	spy := &urlCaptureScraper{
+		products: []scrapeport.RawProduct{
+			{Title: "Producto base", URL: "https://example.com/p/1", Price: &price},
+		},
+		captureURL: func(url string) { capturedURL = url },
+	}
+	sourceRepo := newMockSourceRepo()
+	jobRepo := newMockJobRepo()
+	tenantID := uuid.New()
+
+	job, _ := buildJobWithSource(sourceRepo, tenantID, "extract")
+	_ = jobRepo.Save(context.Background(), job)
+
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
+
+	// Act
+	err := uc.Execute(context.Background(), job)
+
+	// Assert — page=0 should NOT add pagination params
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com", capturedURL)
+}
+
+// --- url-capturing scraper for pagination tests ---
+
+type urlCaptureScraper struct {
+	products   []scrapeport.RawProduct
+	captureURL func(string)
+}
+
+func (s *urlCaptureScraper) Extract(_ context.Context, url string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	if s.captureURL != nil {
+		s.captureURL(url)
+	}
+	return s.products, nil
+}
+func (s *urlCaptureScraper) ScrapeJSON(_ context.Context, url string, _ json.RawMessage, _ scrapeport.ExtractOptions) ([]scrapeport.RawProduct, error) {
+	if s.captureURL != nil {
+		s.captureURL(url)
+	}
+	return s.products, nil
+}
+func (s *urlCaptureScraper) Scrape(_ context.Context, _ string, _ scrapeport.ScrapeOptions) (string, error) {
+	return "", nil
+}
+func (s *urlCaptureScraper) Crawl(_ context.Context, _ string, _ scrapeport.CrawlOptions) (string, error) {
+	return "", nil
+}
+func (s *urlCaptureScraper) CrawlStatus(_ context.Context, _ string) (scrapeport.CrawlResult, error) {
+	return scrapeport.CrawlResult{}, nil
+}
+
+// --- T-SCR-B03: extract method sigue funcionando normalmente ---
+
 func TestExecuteScrapingUseCase_ExtractMethodCallsFirecrawlAndSavesProducts(t *testing.T) {
 	// Arrange
 	price := 100.0

@@ -3,10 +3,11 @@ package value_object
 import "encoding/json"
 
 type CrawlConfig struct {
-	MaxDepth    int      `json:"max_depth,omitempty"`
-	URLPatterns []string `json:"url_patterns,omitempty"`
-	MaxPages    int      `json:"max_pages,omitempty"`
-	IgnoreRobots bool   `json:"ignore_robots,omitempty"`
+	MaxDepth     int      `json:"max_depth,omitempty"`
+	URLPatterns  []string `json:"url_patterns,omitempty"`
+	MaxPages     int      `json:"max_pages,omitempty"`
+	PageParam    string   `json:"page_param,omitempty"`
+	IgnoreRobots bool     `json:"ignore_robots,omitempty"`
 }
 
 func NewCrawlConfig(maxDepth int, urlPatterns []string) CrawlConfig {
@@ -25,6 +26,13 @@ func CrawlConfigFromJSON(raw json.RawMessage) (CrawlConfig, error) {
 		return CrawlConfig{}, err
 	}
 	return cfg, nil
+}
+
+func (c CrawlConfig) EffectivePageParam() string {
+	if c.PageParam != "" {
+		return c.PageParam
+	}
+	return "page"
 }
 
 func (c CrawlConfig) ToJSON() (json.RawMessage, error) {

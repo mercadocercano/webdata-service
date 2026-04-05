@@ -43,7 +43,7 @@ func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 		pollInterval: extractPollInterval,
 		pollTimeout:  parseDurationEnv("FIRECRAWL_EXTRACT_TIMEOUT", 5*time.Minute),
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 120*time.Second),
 		},
 	}
 }

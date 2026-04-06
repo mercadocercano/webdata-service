@@ -12,11 +12,12 @@ import (
 )
 
 type UpsertProductsUseCase struct {
-	repo port.ProductRepository
+	repo           port.ProductRepository
+	categoryFinder port.SourceCategoryFinder
 }
 
-func NewUpsertProductsUseCase(repo port.ProductRepository) *UpsertProductsUseCase {
-	return &UpsertProductsUseCase{repo: repo}
+func NewUpsertProductsUseCase(repo port.ProductRepository, categoryFinder port.SourceCategoryFinder) *UpsertProductsUseCase {
+	return &UpsertProductsUseCase{repo: repo, categoryFinder: categoryFinder}
 }
 
 func (uc *UpsertProductsUseCase) Execute(
@@ -44,6 +45,16 @@ func (uc *UpsertProductsUseCase) execute(
 	jobID *uuid.UUID,
 	rawProducts []scrapingport.RawProduct,
 ) (created, updated int, err error) {
+	// Resolve source category once for the entire batch.
+	var autoAssignment *value_object.BusinessTypeAssignment
+	if uc.categoryFinder != nil {
+		if category, catErr := uc.categoryFinder.FindCategoryBySourceID(ctx, tenantID, sourceID); catErr == nil {
+			if assignment, ok := value_object.MapCategoryToBusinessType(category); ok {
+				autoAssignment = &assignment
+			}
+		}
+	}
+
 	for _, raw := range rawProducts {
 		if raw.Title == "" {
 			continue
@@ -105,6 +116,12 @@ func (uc *UpsertProductsUseCase) execute(
 
 		if _, upsertErr := uc.repo.Upsert(ctx, product); upsertErr == nil {
 			created++
+			if autoAssignment != nil {
+				assignments := []value_object.BusinessTypeAssignment{*autoAssignment}
+				if btErr := uc.repo.SaveBusinessTypes(ctx, tenantID, product.ID, assignments); btErr != nil {
+					fmt.Printf("[upsert] error auto-assigning business type for product %s: %v\n", product.ID, btErr)
+				}
+			}
 		} else {
 			fmt.Printf("[upsert] error saving new product (title=%q, hash=%s): %v\n", product.Title, product.ContentHash, upsertErr)
 		}

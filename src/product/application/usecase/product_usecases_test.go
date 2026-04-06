@@ -16,6 +16,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// --- Mock source category finder ---
+
+type mockSourceCategoryFinder struct {
+	categories map[string]string // sourceID -> category
+}
+
+func newMockSourceCategoryFinder() *mockSourceCategoryFinder {
+	return &mockSourceCategoryFinder{categories: make(map[string]string)}
+}
+
+func (m *mockSourceCategoryFinder) FindCategoryBySourceID(_ context.Context, _, sourceID uuid.UUID) (string, error) {
+	cat, ok := m.categories[sourceID.String()]
+	if !ok {
+		return "", errors.New("source not found")
+	}
+	return cat, nil
+}
+
 // --- Mock product repo ---
 
 type mockProductRepo struct {
@@ -204,7 +222,7 @@ func TestListProductsUseCase_FiltersAndPagination(t *testing.T) {
 
 func TestUpsertProductsUseCase_DedupByHash(t *testing.T) {
 	repo := newMockProductRepo()
-	uc := usecase.NewUpsertProductsUseCase(repo)
+	uc := usecase.NewUpsertProductsUseCase(repo, newMockSourceCategoryFinder())
 	tenantID := uuid.New()
 	sourceID := uuid.New()
 
@@ -227,7 +245,7 @@ func TestUpsertProductsUseCase_DedupByHash(t *testing.T) {
 
 func TestUpsertProductsUseCase_PriceHistoryOnChange(t *testing.T) {
 	repo := newMockProductRepo()
-	uc := usecase.NewUpsertProductsUseCase(repo)
+	uc := usecase.NewUpsertProductsUseCase(repo, newMockSourceCategoryFinder())
 	tenantID := uuid.New()
 	sourceID := uuid.New()
 
@@ -249,7 +267,7 @@ func TestUpsertProductsUseCase_PriceHistoryOnChange(t *testing.T) {
 func TestUpsertProductsUseCase_ReturnsZeroWhenUpsertFails(t *testing.T) {
 	// Arrange — repo que siempre falla en Upsert (simula FK violation)
 	repo := &failingProductRepo{}
-	uc := usecase.NewUpsertProductsUseCase(repo)
+	uc := usecase.NewUpsertProductsUseCase(repo, newMockSourceCategoryFinder())
 	price := 100.0
 	raw := []scrapeport.RawProduct{
 		{Title: "Leche 1L", URL: "https://example.com/leche", Price: &price},
@@ -266,7 +284,7 @@ func TestUpsertProductsUseCase_ReturnsZeroWhenUpsertFails(t *testing.T) {
 func TestUpsertProductsUseCase_SkipsProductsWithEmptyTitle(t *testing.T) {
 	// Arrange
 	repo := newMockProductRepo()
-	uc := usecase.NewUpsertProductsUseCase(repo)
+	uc := usecase.NewUpsertProductsUseCase(repo, newMockSourceCategoryFinder())
 	raw := []scrapeport.RawProduct{
 		{Title: "", URL: "https://example.com/empty"},
 		{Title: "Producto válido", URL: "https://example.com/valid"},
@@ -359,6 +377,120 @@ func TestUpdateProductUseCase_NotFound(t *testing.T) {
 	uc := usecase.NewUpdateProductUseCase(repo)
 	err := uc.Execute(context.Background(), uuid.New(), uuid.New(), true)
 	assert.Error(t, err)
+}
+
+// --- T-PRD-A08: Auto-assign business types on new product ---
+
+func TestUpsertProductsUseCase_AssignsBusinessType_NewProduct(t *testing.T) {
+	// Arrange
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "supermercado"
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 100.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Leche 1L", URL: "https://example.com/leche", Price: &price},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved)
+
+	// Find the created product and check business types
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1, "new product should have 1 business type assigned")
+		assert.Equal(t, "almacen_supermercado", p.BusinessTypes[0].BusinessTypeCode)
+		assert.Equal(t, "Almacén / Supermercado", p.BusinessTypes[0].BusinessTypeName)
+	}
+}
+
+func TestUpsertProductsUseCase_DoesNotOverwriteExistingBusinessTypes(t *testing.T) {
+	// Arrange — product already has a business type
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "supermercado"
+
+	// Create product first
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 100.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Leche 1L", URL: "https://example.com/leche", Price: &price},
+	}
+	_, _ = uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Verify product has 1 business type
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1)
+	}
+
+	// Act — upsert same product again (update path)
+	price2 := 120.0
+	raw[0].Price = &price2
+	_, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert — business types should NOT be overwritten
+	require.NoError(t, err)
+	for _, p := range repo.products {
+		assert.Len(t, p.BusinessTypes, 1, "existing business types should not be overwritten")
+		assert.Equal(t, "almacen_supermercado", p.BusinessTypes[0].BusinessTypeCode)
+	}
+}
+
+func TestUpsertProductsUseCase_UnknownCategory_SkipsGracefully(t *testing.T) {
+	// Arrange
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "unknown_category"
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 50.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Producto X", URL: "https://example.com/x", Price: &price},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert — product saved, no business types assigned, no error
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved)
+	for _, p := range repo.products {
+		assert.Empty(t, p.BusinessTypes, "unknown category should not assign business types")
+	}
+}
+
+func TestUpsertProductsUseCase_SourceNotFound_SkipsGracefully(t *testing.T) {
+	// Arrange — finder has no category for this source
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 50.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Producto Y", URL: "https://example.com/y", Price: &price},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert — product saved, no business types, no error
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved)
+	for _, p := range repo.products {
+		assert.Empty(t, p.BusinessTypes, "source not found should not assign business types")
+	}
 }
 
 func TestGetPriceHistoryUseCase_ReturnsHistory(t *testing.T) {

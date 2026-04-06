@@ -68,7 +68,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products WHERE tenant_id=$1 AND id=$2`
 
@@ -79,7 +79,7 @@ func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id u
 func (r *PostgresProductRepository) FindByContentHash(ctx context.Context, tenantID, sourceID uuid.UUID, hash value_object.ContentHash) (*entity.ScrapedProduct, error) {
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products WHERE tenant_id=$1 AND source_id=$2 AND content_hash=$3`
 
@@ -153,7 +153,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 
 	query := fmt.Sprintf(`SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products %s ORDER BY %s %s LIMIT $%d OFFSET $%d`,
 		where, sortBy, sortOrder, argIdx, argIdx+1)

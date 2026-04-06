@@ -98,7 +98,7 @@ func (r *noopProductRepo) FindBusinessTypesForProduct(_ context.Context, _, _ uu
 // --- Helper: build executeScrapingUseCase ---
 
 func buildExecuteUC(scraper scrapeport.ScraperPort) *scrapeuse.ExecuteScrapingUseCase {
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	return scrapeuse.NewExecuteScrapingUseCase(
 		newMockJobRepo(),
 		newMockSourceRepo(),
@@ -136,7 +136,7 @@ func TestExecuteScrapingUseCase_CrawlMethodReturnsErrorWithoutCallingFirecrawl(t
 	job, _ := buildJobWithSource(sourceRepo, tenantID, "crawl")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	// Act
@@ -165,7 +165,7 @@ func TestExecuteScrapingUseCase_ScrapeMethodCallsScrapeJSONAndSavesProducts(t *t
 	job, _ := buildJobWithSource(sourceRepo, tenantID, "scrape")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	// Act
@@ -235,7 +235,7 @@ func TestExecuteScrapingUseCase_PaginatedJobAppendsPageParam(t *testing.T) {
 	job, _ := entity.NewPaginatedScrapingJob(tenantID, source.ID, "manual", 2)
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	// Act
@@ -263,7 +263,7 @@ func TestExecuteScrapingUseCase_NonPaginatedJobUsesBaseURL(t *testing.T) {
 	job, _ := buildJobWithSource(sourceRepo, tenantID, "extract")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	// Act
@@ -367,7 +367,7 @@ func TestExecuteScrapingUseCase_ExtractMethodCallsFirecrawlAndSavesProducts(t *t
 	job, _ := buildJobWithSource(sourceRepo, tenantID, "extract")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	// Act

@@ -18,7 +18,8 @@ type ProductModule struct {
 
 func NewProductModule(db *sql.DB) *ProductModule {
 	repo := productpersistence.NewPostgresProductRepository(db)
-	upsertUC := productusecase.NewUpsertProductsUseCase(repo)
+	categoryFinder := productadapter.NewSourceCategoryAdapter(db)
+	upsertUC := productusecase.NewUpsertProductsUseCase(repo, categoryFinder)
 	listUC := productusecase.NewListProductsUseCase(repo)
 	getUC := productusecase.NewGetProductUseCase(repo)
 	priceHistUC := productusecase.NewGetPriceHistoryUseCase(repo)

@@ -29,7 +29,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 			url, image_url, description, brand, category, sku, ean, in_stock,
 			normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 			first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
 		ON CONFLICT (tenant_id, source_id, content_hash) DO UPDATE SET
 			last_seen_at = EXCLUDED.last_seen_at,
 			price = EXCLUDED.price,
@@ -55,7 +55,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 	err := r.db.QueryRowContext(ctx, query,
 		p.ID, p.TenantID, p.SourceID, p.JobID, p.Title, p.Price, p.Currency, p.OriginalPrice,
 		p.URL, p.ImageURL, p.Description, p.Brand, p.Category, p.SKU, p.EAN, p.InStock,
-		p.NormalizedCategory, p.ConfidenceScore, p.ContentHash.String(),
+		p.NormalizedCategory, p.ConfidenceScore, p.ContentHash.String(), p.IsBlocked, p.HiddenAt,
 		p.FirstSeenAt, p.LastSeenAt, p.PriceChangedAt, rawDataJSON, p.CreatedAt, p.UpdatedAt,
 	).Scan(&inserted)
 
@@ -68,7 +68,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products WHERE tenant_id=$1 AND id=$2`
 
@@ -79,7 +79,7 @@ func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id u
 func (r *PostgresProductRepository) FindByContentHash(ctx context.Context, tenantID, sourceID uuid.UUID, hash value_object.ContentHash) (*entity.ScrapedProduct, error) {
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products WHERE tenant_id=$1 AND source_id=$2 AND content_hash=$3`
 
@@ -153,7 +153,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 
 	query := fmt.Sprintf(`SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
-		normalized_category, confidence_score, content_hash,
+		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
 		FROM webdata_products %s ORDER BY %s %s LIMIT $%d OFFSET $%d`,
 		where, sortBy, sortOrder, argIdx, argIdx+1)

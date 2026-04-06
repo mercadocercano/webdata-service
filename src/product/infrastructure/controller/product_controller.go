@@ -14,15 +14,16 @@ import (
 )
 
 type ProductController struct {
-	listUC         *productusecase.ListProductsUseCase
-	getUC          *productusecase.GetProductUseCase
-	priceHistUC    *productusecase.GetPriceHistoryUseCase
-	deleteUC       *productusecase.DeleteProductUseCase
-	bulkDeleteUC   *productusecase.BulkDeleteProductsUseCase
-	updateUC       *productusecase.UpdateProductUseCase
-	assignBTUC     *productusecase.AssignBusinessTypesUseCase
-	removeBTUC     *productusecase.RemoveBusinessTypeUseCase
-	bulkAssignBTUC *productusecase.BulkAssignBusinessTypeUseCase
+	listUC          *productusecase.ListProductsUseCase
+	getUC           *productusecase.GetProductUseCase
+	priceHistUC     *productusecase.GetPriceHistoryUseCase
+	deleteUC        *productusecase.DeleteProductUseCase
+	bulkDeleteUC    *productusecase.BulkDeleteProductsUseCase
+	updateUC        *productusecase.UpdateProductUseCase
+	assignBTUC      *productusecase.AssignBusinessTypesUseCase
+	removeBTUC      *productusecase.RemoveBusinessTypeUseCase
+	bulkAssignBTUC  *productusecase.BulkAssignBusinessTypeUseCase
+	autoMatchBTUC   *productusecase.AutoMatchBusinessTypesUseCase
 }
 
 func NewProductController(
@@ -35,11 +36,13 @@ func NewProductController(
 	assignBTUC *productusecase.AssignBusinessTypesUseCase,
 	removeBTUC *productusecase.RemoveBusinessTypeUseCase,
 	bulkAssignBTUC *productusecase.BulkAssignBusinessTypeUseCase,
+	autoMatchBTUC *productusecase.AutoMatchBusinessTypesUseCase,
 ) *ProductController {
 	return &ProductController{
 		listUC: listUC, getUC: getUC, priceHistUC: priceHistUC,
 		deleteUC: deleteUC, bulkDeleteUC: bulkDeleteUC, updateUC: updateUC,
 		assignBTUC: assignBTUC, removeBTUC: removeBTUC, bulkAssignBTUC: bulkAssignBTUC,
+		autoMatchBTUC: autoMatchBTUC,
 	}
 }
 
@@ -337,6 +340,46 @@ func (c *ProductController) BulkAssignBusinessType(w http.ResponseWriter, r *htt
 	}
 
 	result, err := c.bulkAssignBTUC.Execute(r.Context(), tenantID, ids, assignment)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, result)
+}
+
+func (c *ProductController) AutoMatchBusinessTypes(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	var body struct {
+		ProductIDs             []string `json:"product_ids"`
+		IncludeAlreadyAssigned bool     `json:"include_already_assigned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var productIDs []uuid.UUID
+	for _, raw := range body.ProductIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			middleware.JSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid UUID: %s", raw))
+			return
+		}
+		productIDs = append(productIDs, id)
+	}
+
+	req := productusecase.AutoMatchRequest{
+		ProductIDs:             productIDs,
+		IncludeAlreadyAssigned: body.IncludeAlreadyAssigned,
+	}
+
+	result, err := c.autoMatchBTUC.Execute(r.Context(), tenantID, req)
 	if err != nil {
 		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
 		return

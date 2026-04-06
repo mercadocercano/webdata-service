@@ -5,6 +5,7 @@ import (
 
 	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
 	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
+	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	productport "github.com/mercadocercano/webdata-service/src/product/domain/port"
 )
@@ -17,7 +18,8 @@ type ProductModule struct {
 
 func NewProductModule(db *sql.DB) *ProductModule {
 	repo := productpersistence.NewPostgresProductRepository(db)
-	upsertUC := productusecase.NewUpsertProductsUseCase(repo)
+	categoryFinder := productadapter.NewSourceCategoryAdapter(db)
+	upsertUC := productusecase.NewUpsertProductsUseCase(repo, categoryFinder)
 	listUC := productusecase.NewListProductsUseCase(repo)
 	getUC := productusecase.NewGetProductUseCase(repo)
 	priceHistUC := productusecase.NewGetPriceHistoryUseCase(repo)
@@ -27,7 +29,9 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	assignBTUC := productusecase.NewAssignBusinessTypesUseCase(repo)
 	removeBTUC := productusecase.NewRemoveBusinessTypeUseCase(repo)
 	bulkAssignBTUC := productusecase.NewBulkAssignBusinessTypeUseCase(repo)
-	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC)
+	btProvider := productadapter.NewPIMBusinessTypeProvider()
+	autoMatchBTUC := productusecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC)
 
 	return &ProductModule{
 		Repo:       repo,

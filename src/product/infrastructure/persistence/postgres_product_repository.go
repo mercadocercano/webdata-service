@@ -29,7 +29,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 			url, image_url, description, brand, category, sku, ean, in_stock,
 			normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 			first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
 		ON CONFLICT (tenant_id, source_id, content_hash) DO UPDATE SET
 			last_seen_at = EXCLUDED.last_seen_at,
 			price = EXCLUDED.price,
@@ -55,7 +55,7 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 	err := r.db.QueryRowContext(ctx, query,
 		p.ID, p.TenantID, p.SourceID, p.JobID, p.Title, p.Price, p.Currency, p.OriginalPrice,
 		p.URL, p.ImageURL, p.Description, p.Brand, p.Category, p.SKU, p.EAN, p.InStock,
-		p.NormalizedCategory, p.ConfidenceScore, p.ContentHash.String(),
+		p.NormalizedCategory, p.ConfidenceScore, p.ContentHash.String(), p.IsBlocked, p.HiddenAt,
 		p.FirstSeenAt, p.LastSeenAt, p.PriceChangedAt, rawDataJSON, p.CreatedAt, p.UpdatedAt,
 	).Scan(&inserted)
 

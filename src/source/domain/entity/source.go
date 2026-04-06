@@ -27,6 +27,7 @@ type Source struct {
 	Tier             value_object.SourceTier
 	ExtractionSchema value_object.ExtractionSchema
 	CrawlConfig      value_object.CrawlConfig
+	Prompt           string
 	FirecrawlMethod  string
 	CronExpression   string
 	NextRunAt        *time.Time

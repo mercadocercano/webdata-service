@@ -319,7 +319,7 @@ func TestExecuteScrapingUseCase_SuccessUsesRecordJobResult(t *testing.T) {
 	job, source := buildJobWithSource(sourceRepo, tenantID, "extract")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	err := uc.Execute(context.Background(), job)
@@ -339,7 +339,7 @@ func TestExecuteScrapingUseCase_FailureUsesRecordJobResult(t *testing.T) {
 	job, source := buildJobWithSource(sourceRepo, tenantID, "crawl")
 	_ = jobRepo.Save(context.Background(), job)
 
-	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{})
+	upsertUC := usecase.NewUpsertProductsUseCase(&noopProductRepo{}, nil)
 	uc := scrapeuse.NewExecuteScrapingUseCase(jobRepo, sourceRepo, spy, upsertUC)
 
 	err := uc.Execute(context.Background(), job)

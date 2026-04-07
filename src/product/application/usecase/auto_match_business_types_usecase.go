@@ -218,12 +218,19 @@ func (uc *AutoMatchBusinessTypesUseCase) matchProduct(
 		cat = strings.ToLower(strings.TrimSpace(p.Category))
 	}
 
-	if cat == "" {
-		return proposal
+	var keywords []string
+	var matchSource string
+
+	if cat != "" {
+		keywords = findCategoryKeywords(cat)
+		matchSource = "category_match: " + cat
 	}
 
-	// Find matching business type keywords for this category
-	keywords := findCategoryKeywords(cat)
+	// Fallback: match by title/brand keywords when no category
+	if len(keywords) == 0 {
+		keywords, matchSource = inferKeywordsFromTitleBrand(p.Title, p.Brand)
+	}
+
 	if len(keywords) == 0 {
 		return proposal
 	}
@@ -238,7 +245,7 @@ func (uc *AutoMatchBusinessTypesUseCase) matchProduct(
 				matches = append(matches, BusinessTypeMatch{
 					Code:        bt.Code,
 					Name:        bt.Name,
-					MatchReason: "category_match: " + cat + " → " + kw,
+					MatchReason: matchSource + " → " + kw,
 				})
 				break // one match per keyword
 			}
@@ -250,15 +257,73 @@ func (uc *AutoMatchBusinessTypesUseCase) matchProduct(
 
 	if len(matches) > 0 {
 		proposal.ProposedBusinessTypes = matches
-		// Confidence based on match quality
-		if len(matches) >= 2 {
+		if cat != "" && len(matches) >= 2 {
 			proposal.ConfidenceScore = 0.9
-		} else {
+		} else if cat != "" {
 			proposal.ConfidenceScore = 0.7
+		} else {
+			proposal.ConfidenceScore = 0.5 // lower confidence for title/brand inference
 		}
 	}
 
 	return proposal
+}
+
+// titleBrandSignals maps keywords found in product titles/brands to business type keywords.
+var titleBrandSignals = map[string][]string{
+	// Farmacia / Perfumería signals
+	"serum":       {"farmacia", "perfumeria"},
+	"crema":       {"farmacia", "perfumeria"},
+	"protector solar": {"farmacia", "perfumeria"},
+	"shampoo":     {"farmacia", "perfumeria", "supermercado"},
+	"acondicionador": {"farmacia", "perfumeria"},
+	"micelar":     {"farmacia", "perfumeria"},
+	"hidratacion": {"farmacia", "perfumeria"},
+	"facial":      {"farmacia", "perfumeria"},
+	"capilar":     {"farmacia", "perfumeria"},
+	"corporal":    {"farmacia", "perfumeria"},
+	"desodorante": {"farmacia", "perfumeria", "supermercado"},
+	"labial":      {"farmacia", "perfumeria"},
+	"maquillaje":  {"farmacia", "perfumeria"},
+	"vitamina":    {"farmacia"},
+	"fps":         {"farmacia", "perfumeria"},
+	// Brand signals
+	"garnier":      {"farmacia", "perfumeria"},
+	"loreal":       {"farmacia", "perfumeria"},
+	"vichy":        {"farmacia", "perfumeria"},
+	"la roche":     {"farmacia", "perfumeria"},
+	"cerave":       {"farmacia", "perfumeria"},
+	"maybelline":   {"farmacia", "perfumeria"},
+	"neutrogena":   {"farmacia", "perfumeria"},
+	"caviahue":     {"farmacia", "perfumeria"},
+	"eucerin":      {"farmacia", "perfumeria"},
+	"nivea":        {"farmacia", "perfumeria", "supermercado"},
+	// Electronica signals
+	"heladera":     {"electronica"},
+	"lavarropas":   {"electronica"},
+	"microondas":   {"electronica"},
+	"aire acondicionado": {"electronica"},
+	"freezer":      {"electronica"},
+	"freidora":     {"electronica"},
+	"aspiradora":   {"electronica"},
+	"notebook":     {"electronica"},
+	"celular":      {"electronica"},
+	"smart tv":     {"electronica"},
+	"led":          {"electronica"},
+}
+
+// inferKeywordsFromTitleBrand tries to determine business type keywords from
+// product title and brand when category is not available.
+func inferKeywordsFromTitleBrand(title, brand string) ([]string, string) {
+	combined := strings.ToLower(title + " " + brand)
+
+	for signal, keywords := range titleBrandSignals {
+		if strings.Contains(combined, signal) {
+			return keywords, "title_brand_match: " + signal
+		}
+	}
+
+	return nil, ""
 }
 
 // findCategoryKeywords looks up a category in the mapping table.

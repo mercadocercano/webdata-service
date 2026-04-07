@@ -91,6 +91,10 @@ var categoryMapping = map[string][]string{
 	"dulces":               {"almacen", "supermercado", "autoservicio"},
 	"mermeladas":           {"almacen", "supermercado", "autoservicio"},
 	"productos de limpieza": {"supermercado", "almacen", "autoservicio"},
+	"electronica":           {"electronica"},
+	"tecnologia":            {"electronica"},
+	"electro":               {"electronica"},
+	"cosmeticos":            {"farmacia", "perfumeria"},
 }
 
 type AutoMatchBusinessTypesUseCase struct {
@@ -211,9 +215,9 @@ func (uc *AutoMatchBusinessTypesUseCase) matchProduct(
 		NormalizedCategory: p.NormalizedCategory,
 	}
 
-	cat := strings.ToLower(strings.TrimSpace(p.NormalizedCategory))
+	cat := stripAccents(strings.ToLower(strings.TrimSpace(p.NormalizedCategory)))
 	if cat == "" {
-		cat = strings.ToLower(strings.TrimSpace(p.Category))
+		cat = stripAccents(strings.ToLower(strings.TrimSpace(p.Category)))
 	}
 
 	var keywords []string
@@ -310,10 +314,21 @@ var titleBrandSignals = map[string][]string{
 	"led":          {"electronica"},
 }
 
+// stripAccents replaces common Spanish/Portuguese accented characters with ASCII equivalents.
+func stripAccents(s string) string {
+	r := strings.NewReplacer(
+		"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u",
+		"ü", "u", "ñ", "n",
+		"Á", "a", "É", "e", "Í", "i", "Ó", "o", "Ú", "u",
+		"Ü", "u", "Ñ", "n",
+	)
+	return r.Replace(s)
+}
+
 // inferKeywordsFromTitleBrand tries to determine business type keywords from
 // product title and brand when category is not available.
 func inferKeywordsFromTitleBrand(title, brand string) ([]string, string) {
-	combined := strings.ToLower(title + " " + brand)
+	combined := stripAccents(strings.ToLower(title + " " + brand))
 
 	for signal, keywords := range titleBrandSignals {
 		if strings.Contains(combined, signal) {
@@ -332,8 +347,12 @@ func findCategoryKeywords(cat string) []string {
 		return keywords
 	}
 
-	// Contains match — find the first mapping key contained in the category
+	// Contains match — require minimum 4-char keys to avoid false positives
+	// (e.g., "te" matching inside "tecnología")
 	for key, keywords := range categoryMapping {
+		if len(key) < 4 {
+			continue
+		}
 		if strings.Contains(cat, key) || strings.Contains(key, cat) {
 			return keywords
 		}

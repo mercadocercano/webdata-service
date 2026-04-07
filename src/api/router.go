@@ -53,6 +53,7 @@ func NewRouter(
 		r.Route("/products", func(r chi.Router) {
 			r.Get("/", productCtrl.ListProducts)
 			r.Get("/filters", productCtrl.GetProductFilters)
+			r.Post("/sync-to-pim", productCtrl.SyncToPIM)
 			r.Post("/bulk-delete", productCtrl.BulkDeleteProducts)
 			r.Post("/bulk-assign-business-type", productCtrl.BulkAssignBusinessType)
 			r.Post("/auto-assign-business-types", productCtrl.AutoMatchBusinessTypes)

@@ -1,14 +1,17 @@
 package controller
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	productrequest "github.com/mercadocercano/webdata-service/src/product/application/request"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
+	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
 	vo "github.com/mercadocercano/webdata-service/src/product/domain/value_object"
 	"github.com/mercadocercano/webdata-service/src/shared/middleware"
 )
@@ -25,6 +28,7 @@ type ProductController struct {
 	bulkAssignBTUC  *productusecase.BulkAssignBusinessTypeUseCase
 	autoMatchBTUC   *productusecase.AutoMatchBusinessTypesUseCase
 	getFiltersUC    *productusecase.GetProductFiltersUseCase
+	syncToPIMUC     *productusecase.SyncProductToPIMUseCase
 }
 
 func NewProductController(
@@ -39,12 +43,13 @@ func NewProductController(
 	bulkAssignBTUC *productusecase.BulkAssignBusinessTypeUseCase,
 	autoMatchBTUC *productusecase.AutoMatchBusinessTypesUseCase,
 	getFiltersUC *productusecase.GetProductFiltersUseCase,
+	syncToPIMUC *productusecase.SyncProductToPIMUseCase,
 ) *ProductController {
 	return &ProductController{
 		listUC: listUC, getUC: getUC, priceHistUC: priceHistUC,
 		deleteUC: deleteUC, bulkDeleteUC: bulkDeleteUC, updateUC: updateUC,
 		assignBTUC: assignBTUC, removeBTUC: removeBTUC, bulkAssignBTUC: bulkAssignBTUC,
-		autoMatchBTUC: autoMatchBTUC, getFiltersUC: getFiltersUC,
+		autoMatchBTUC: autoMatchBTUC, getFiltersUC: getFiltersUC, syncToPIMUC: syncToPIMUC,
 	}
 }
 
@@ -390,6 +395,32 @@ func (c *ProductController) AutoMatchBusinessTypes(w http.ResponseWriter, r *htt
 	middleware.JSONResponse(w, http.StatusOK, result)
 }
 
+func (c *ProductController) SyncToPIM(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	ctx := r.Context()
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		ctx = productadapter.ContextWithAuthToken(ctx, auth)
+		ctx = productadapter.ContextWithJWTTenantID(ctx, extractTenantFromJWT(auth))
+	}
+
+	sourceName := r.URL.Query().Get("source_name")
+	synced, failed, err := c.syncToPIMUC.SyncPending(ctx, tenantID, sourceName)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"synced": synced,
+		"failed": failed,
+	})
+}
+
 func (c *ProductController) GetProductFilters(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := middleware.TenantIDFromContext(r.Context())
 	if !ok {
@@ -404,6 +435,25 @@ func (c *ProductController) GetProductFilters(w http.ResponseWriter, r *http.Req
 	}
 
 	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{"data": filters})
+}
+
+func extractTenantFromJWT(authHeader string) string {
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		TenantID string `json:"tenant_id"`
+	}
+	if json.Unmarshal(payload, &claims) != nil {
+		return ""
+	}
+	return claims.TenantID
 }
 
 func parseIntQuery(r *http.Request, key string, defaultVal int) int {

@@ -35,7 +35,7 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	btProvider := productadapter.NewPIMBusinessTypeProvider()
 	autoMatchBTUC := productusecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
 	getFiltersUC := productusecase.NewGetProductFiltersUseCase(repo)
-	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC, getFiltersUC)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC, getFiltersUC, syncToPIMUC)
 
 	return &ProductModule{
 		Repo:       repo,

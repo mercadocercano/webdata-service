@@ -174,6 +174,42 @@ func (a *PIMCatalogSyncerAdapter) Update(ctx context.Context, tenantID uuid.UUID
 }
 
 func (a *PIMCatalogSyncerAdapter) setHeaders(req *http.Request, tenantID uuid.UUID) {
-	req.Header.Set("X-Tenant-ID", tenantID.String())
 	req.Header.Set("X-User-Role", "marketplace_admin")
+	if token := authTokenFromContext(req.Context()); token != "" {
+		req.Header.Set("Authorization", token)
+		if jwtTenantID := tenantIDFromContext(req.Context()); jwtTenantID != "" {
+			req.Header.Set("X-Tenant-ID", jwtTenantID)
+		} else {
+			req.Header.Set("X-Tenant-ID", tenantID.String())
+		}
+	} else {
+		req.Header.Set("X-Tenant-ID", tenantID.String())
+	}
+}
+
+type contextKey string
+
+const authTokenKey contextKey = "auth_token"
+const jwtTenantKey contextKey = "jwt_tenant_id"
+
+func ContextWithAuthToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, authTokenKey, token)
+}
+
+func ContextWithJWTTenantID(ctx context.Context, tenantID string) context.Context {
+	return context.WithValue(ctx, jwtTenantKey, tenantID)
+}
+
+func authTokenFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(authTokenKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func tenantIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(jwtTenantKey).(string); ok {
+		return v
+	}
+	return ""
 }

@@ -27,11 +27,14 @@ func NewPIMBusinessTypeProvider() *PIMBusinessTypeProvider {
 	}
 }
 
+type pimBusinessType struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
 type pimBusinessTypeResponse struct {
-	Data []struct {
-		Code string `json:"code"`
-		Name string `json:"name"`
-	} `json:"data"`
+	Data  []pimBusinessType `json:"data"`
+	Items []pimBusinessType `json:"items"`
 }
 
 func (p *PIMBusinessTypeProvider) FetchAll(ctx context.Context, tenantID string) ([]port.BusinessType, error) {
@@ -59,8 +62,14 @@ func (p *PIMBusinessTypeProvider) FetchAll(ctx context.Context, tenantID string)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	result := make([]port.BusinessType, len(body.Data))
-	for i, bt := range body.Data {
+	// PIM may return business types in "data" or "items" depending on version
+	btList := body.Data
+	if len(btList) == 0 {
+		btList = body.Items
+	}
+
+	result := make([]port.BusinessType, len(btList))
+	for i, bt := range btList {
 		result[i] = port.BusinessType{Code: bt.Code, Name: bt.Name}
 	}
 	return result, nil

@@ -312,6 +312,12 @@ var titleBrandSignals = map[string][]string{
 	"celular":      {"electronica"},
 	"smart tv":     {"electronica"},
 	"led":          {"electronica"},
+	// Hair care
+	"balsamo":      {"farmacia", "perfumeria", "supermercado"},
+	"capilatis":    {"farmacia", "perfumeria"},
+	// Personal care
+	"preservativo": {"farmacia"},
+	"preservativos": {"farmacia"},
 }
 
 // stripAccents replaces common Spanish/Portuguese accented characters with ASCII equivalents.

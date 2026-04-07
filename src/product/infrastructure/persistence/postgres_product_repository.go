@@ -93,7 +93,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 		page = 1
 	}
 	pageSize := filter.PageSize
-	if pageSize < 1 || pageSize > 9999 {
+	if pageSize < 1 || pageSize > 50000 {
 		pageSize = 20
 	}
 	offset := (page - 1) * pageSize
@@ -135,6 +135,9 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 		where += fmt.Sprintf(" AND id IN (SELECT product_id FROM webdata_product_business_types WHERE business_type_code = $%d AND tenant_id = $%d)", argIdx, argIdx+1)
 		args = append(args, filter.BusinessTypeCode, tenantID)
 		argIdx += 2
+	}
+	if filter.WithoutBusinessTypes {
+		where += " AND id NOT IN (SELECT DISTINCT product_id FROM webdata_product_business_types)"
 	}
 
 	var total int

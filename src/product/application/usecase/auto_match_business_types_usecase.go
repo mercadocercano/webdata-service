@@ -178,8 +178,9 @@ func (uc *AutoMatchBusinessTypesUseCase) fetchAll(
 	includeAssigned bool,
 ) ([]*port.ProductSummary, error) {
 	products, _, err := uc.repo.FindAll(ctx, tenantID, port.ProductFilter{
-		Page:     1,
-		PageSize: 10000, // fetch all for matching
+		Page:                 1,
+		PageSize:             10000,
+		WithoutBusinessTypes: !includeAssigned,
 	})
 	if err != nil {
 		return nil, err
@@ -187,9 +188,6 @@ func (uc *AutoMatchBusinessTypesUseCase) fetchAll(
 
 	var result []*port.ProductSummary
 	for _, p := range products {
-		if !includeAssigned && len(p.BusinessTypes) > 0 {
-			continue
-		}
 		result = append(result, &port.ProductSummary{
 			ID:                 p.ID,
 			Title:              p.Title,

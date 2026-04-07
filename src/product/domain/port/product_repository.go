@@ -46,4 +46,5 @@ type ProductFilter struct {
 	SortOrder          string
 	Page               int
 	PageSize           int
+	WithoutBusinessTypes bool
 }

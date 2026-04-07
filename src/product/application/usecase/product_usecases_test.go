@@ -115,6 +115,9 @@ func (m *mockProductRepo) FindByContentHash(ctx context.Context, tenantID, sourc
 func (m *mockProductRepo) FindAll(ctx context.Context, tenantID uuid.UUID, filter port.ProductFilter) ([]*entity.ScrapedProduct, int, error) {
 	var result []*entity.ScrapedProduct
 	for _, p := range m.products {
+		if filter.WithoutBusinessTypes && len(p.BusinessTypes) > 0 {
+			continue
+		}
 		result = append(result, p)
 	}
 	return result, len(result), nil

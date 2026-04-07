@@ -37,6 +37,7 @@ type ScrapedProduct struct {
 	RawData            json.RawMessage
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	SyncedToPIMAt      *time.Time
 	BusinessTypes      []value_object.BusinessTypeAssignment
 }
 
@@ -140,6 +141,23 @@ func (sp *ScrapedProduct) UpdatePrice(newPrice float64) {
 func (sp *ScrapedProduct) TouchLastSeen() {
 	now := time.Now()
 	sp.LastSeenAt = now
+	sp.UpdatedAt = now
+}
+
+// IsReadyForPIMSync returns true when the product has the minimum fields for catalog sync.
+func (sp *ScrapedProduct) IsReadyForPIMSync() bool {
+	return sp.Price != nil && sp.ImageURL != "" && sp.Category != "" && sp.HiddenAt == nil && !sp.IsBlocked
+}
+
+// NeedsPIMSync returns true when the product should be synced to PIM.
+func (sp *ScrapedProduct) NeedsPIMSync() bool {
+	return sp.IsReadyForPIMSync() && sp.SyncedToPIMAt == nil
+}
+
+// MarkSyncedToPIM records the sync timestamp.
+func (sp *ScrapedProduct) MarkSyncedToPIM() {
+	now := time.Now()
+	sp.SyncedToPIMAt = &now
 	sp.UpdatedAt = now
 }
 

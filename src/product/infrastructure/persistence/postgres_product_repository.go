@@ -69,7 +69,7 @@ func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id u
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
 		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
-		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
+		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at, synced_to_pim_at
 		FROM webdata_products WHERE tenant_id=$1 AND id=$2`
 
 	row := r.db.QueryRowContext(ctx, query, tenantID, id)
@@ -80,7 +80,7 @@ func (r *PostgresProductRepository) FindByContentHash(ctx context.Context, tenan
 	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
 		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
-		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
+		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at, synced_to_pim_at
 		FROM webdata_products WHERE tenant_id=$1 AND source_id=$2 AND content_hash=$3`
 
 	row := r.db.QueryRowContext(ctx, query, tenantID, sourceID, hash.String())
@@ -157,7 +157,7 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 	query := fmt.Sprintf(`SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
 		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
-		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at
+		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at, synced_to_pim_at
 		FROM webdata_products %s ORDER BY %s %s LIMIT $%d OFFSET $%d`,
 		where, sortBy, sortOrder, argIdx, argIdx+1)
 	args = append(args, pageSize, offset)
@@ -340,12 +340,93 @@ func (r *PostgresProductRepository) FindBusinessTypesForProduct(ctx context.Cont
 	return assignments, rows.Err()
 }
 
+func (r *PostgresProductRepository) MarkSyncedToPIM(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		"UPDATE webdata_products SET synced_to_pim_at = NOW(), updated_at = NOW() WHERE tenant_id=$1 AND id=$2",
+		tenantID, id)
+	if err != nil {
+		return fmt.Errorf("marking product synced: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresProductRepository) GetFilters(ctx context.Context, tenantID uuid.UUID) (*port.ProductFilters, error) {
+	where, args, _ := database.TenantWhereClause(tenantID)
+	where += " AND hidden_at IS NULL"
+
+	filters := &port.ProductFilters{}
+
+	// Brands
+	rows, err := r.db.QueryContext(ctx,
+		"SELECT DISTINCT brand FROM webdata_products "+where+" AND brand IS NOT NULL AND brand != '' ORDER BY brand", args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying brands: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var b string
+		if err := rows.Scan(&b); err != nil {
+			return nil, fmt.Errorf("scanning brand: %w", err)
+		}
+		filters.Brands = append(filters.Brands, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Categories
+	rows, err = r.db.QueryContext(ctx,
+		"SELECT DISTINCT category FROM webdata_products "+where+" AND category IS NOT NULL AND category != '' ORDER BY category", args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying categories: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, fmt.Errorf("scanning category: %w", err)
+		}
+		filters.Categories = append(filters.Categories, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sources
+	rows, err = r.db.QueryContext(ctx,
+		"SELECT DISTINCT p.source_id, COALESCE(s.name, '') FROM webdata_products p LEFT JOIN webdata_sources s ON p.source_id = s.id "+where+" AND p.source_id IS NOT NULL ORDER BY COALESCE(s.name, '')", args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying sources: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sf port.SourceFilter
+		if err := rows.Scan(&sf.ID, &sf.Name); err != nil {
+			return nil, fmt.Errorf("scanning source: %w", err)
+		}
+		filters.Sources = append(filters.Sources, sf)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Price range
+	err = r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(MIN(price), 0), COALESCE(MAX(price), 0) FROM webdata_products "+where+" AND price IS NOT NULL", args...).
+		Scan(&filters.PriceRange.Min, &filters.PriceRange.Max)
+	if err != nil {
+		return nil, fmt.Errorf("querying price range: %w", err)
+	}
+
+	return filters, nil
+}
+
 func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedProduct, error) {
 	var p entity.ScrapedProduct
 	var jobID sql.NullString
 	var price, originalPrice, confidenceScore sql.NullFloat64
 	var imageURL, description, brand, category, sku, ean, normalizedCategory sql.NullString
-	var hiddenAt, priceChangedAt sql.NullTime
+	var hiddenAt, priceChangedAt, syncedToPIMAt sql.NullTime
 	var rawData []byte
 	var contentHashStr string
 
@@ -353,7 +434,7 @@ func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedPr
 		&p.ID, &p.TenantID, &p.SourceID, &jobID, &p.Title, &price, &p.Currency, &originalPrice,
 		&p.URL, &imageURL, &description, &brand, &category, &sku, &ean, &p.InStock,
 		&normalizedCategory, &confidenceScore, &contentHashStr, &p.IsBlocked, &hiddenAt,
-		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt,
+		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt, &syncedToPIMAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, exception.ProductNotFoundError{}
@@ -364,6 +445,9 @@ func (r *PostgresProductRepository) scanProduct(row *sql.Row) (*entity.ScrapedPr
 
 	if hiddenAt.Valid {
 		p.HiddenAt = &hiddenAt.Time
+	}
+	if syncedToPIMAt.Valid {
+		p.SyncedToPIMAt = &syncedToPIMAt.Time
 	}
 
 	return buildProduct(&p, jobID, price, originalPrice, confidenceScore,
@@ -376,7 +460,7 @@ func (r *PostgresProductRepository) scanProductRow(rows *sql.Rows) (*entity.Scra
 	var jobID sql.NullString
 	var price, originalPrice, confidenceScore sql.NullFloat64
 	var imageURL, description, brand, category, sku, ean, normalizedCategory sql.NullString
-	var hiddenAt, priceChangedAt sql.NullTime
+	var hiddenAt, priceChangedAt, syncedToPIMAt sql.NullTime
 	var rawData []byte
 	var contentHashStr string
 
@@ -384,7 +468,7 @@ func (r *PostgresProductRepository) scanProductRow(rows *sql.Rows) (*entity.Scra
 		&p.ID, &p.TenantID, &p.SourceID, &jobID, &p.Title, &price, &p.Currency, &originalPrice,
 		&p.URL, &imageURL, &description, &brand, &category, &sku, &ean, &p.InStock,
 		&normalizedCategory, &confidenceScore, &contentHashStr, &p.IsBlocked, &hiddenAt,
-		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt,
+		&p.FirstSeenAt, &p.LastSeenAt, &priceChangedAt, &rawData, &p.CreatedAt, &p.UpdatedAt, &syncedToPIMAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scanning product row: %w", err)
@@ -392,6 +476,9 @@ func (r *PostgresProductRepository) scanProductRow(rows *sql.Rows) (*entity.Scra
 
 	if hiddenAt.Valid {
 		p.HiddenAt = &hiddenAt.Time
+	}
+	if syncedToPIMAt.Valid {
+		p.SyncedToPIMAt = &syncedToPIMAt.Time
 	}
 
 	return buildProduct(&p, jobID, price, originalPrice, confidenceScore,

@@ -13,6 +13,8 @@ type ProductRepository interface {
 	FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error)
 	FindByContentHash(ctx context.Context, tenantID, sourceID uuid.UUID, hash value_object.ContentHash) (*entity.ScrapedProduct, error)
 	FindAll(ctx context.Context, tenantID uuid.UUID, filter ProductFilter) ([]*entity.ScrapedProduct, int, error)
+	GetFilters(ctx context.Context, tenantID uuid.UUID) (*ProductFilters, error)
+	MarkSyncedToPIM(ctx context.Context, tenantID, id uuid.UUID) error
 	SoftDelete(ctx context.Context, tenantID, id uuid.UUID) error
 	BulkSoftDelete(ctx context.Context, tenantID uuid.UUID, ids []uuid.UUID) (int64, error)
 	UpdateBlocked(ctx context.Context, tenantID, id uuid.UUID, blocked bool) error
@@ -21,6 +23,23 @@ type ProductRepository interface {
 	SaveBusinessTypes(ctx context.Context, tenantID, productID uuid.UUID, assignments []value_object.BusinessTypeAssignment) error
 	RemoveBusinessType(ctx context.Context, tenantID, productID uuid.UUID, code string) error
 	FindBusinessTypesForProduct(ctx context.Context, tenantID, productID uuid.UUID) ([]value_object.BusinessTypeAssignment, error)
+}
+
+type ProductFilters struct {
+	Brands     []string       `json:"brands"`
+	Categories []string       `json:"categories"`
+	Sources    []SourceFilter `json:"sources"`
+	PriceRange PriceRange     `json:"price_range"`
+}
+
+type SourceFilter struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+type PriceRange struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
 }
 
 // ProductSummary is a lightweight projection used by the auto-match use case.

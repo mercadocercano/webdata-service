@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
@@ -14,10 +15,16 @@ import (
 type UpsertProductsUseCase struct {
 	repo           port.ProductRepository
 	categoryFinder port.SourceCategoryFinder
+	pimSync        *SyncProductToPIMUseCase
+	sourceName     string
 }
 
 func NewUpsertProductsUseCase(repo port.ProductRepository, categoryFinder port.SourceCategoryFinder) *UpsertProductsUseCase {
 	return &UpsertProductsUseCase{repo: repo, categoryFinder: categoryFinder}
+}
+
+func (uc *UpsertProductsUseCase) WithPIMSync(syncUC *SyncProductToPIMUseCase) {
+	uc.pimSync = syncUC
 }
 
 func (uc *UpsertProductsUseCase) Execute(
@@ -86,6 +93,7 @@ func (uc *UpsertProductsUseCase) execute(
 					fmt.Printf("[upsert] error touching last_seen for product %s (title=%q): %v\n", existing.ID, existing.Title, saveErr)
 				}
 			}
+			uc.trySyncToPIM(ctx, existing)
 			continue
 		}
 
@@ -121,12 +129,23 @@ func (uc *UpsertProductsUseCase) execute(
 				if btErr := uc.repo.SaveBusinessTypes(ctx, tenantID, product.ID, assignments); btErr != nil {
 					fmt.Printf("[upsert] error auto-assigning business type for product %s: %v\n", product.ID, btErr)
 				}
+				product.BusinessTypes = assignments
 			}
+			uc.trySyncToPIM(ctx, product)
 		} else {
 			fmt.Printf("[upsert] error saving new product (title=%q, hash=%s): %v\n", product.Title, product.ContentHash, upsertErr)
 		}
 	}
 
 	return created, updated, nil
+}
+
+func (uc *UpsertProductsUseCase) trySyncToPIM(ctx context.Context, product *entity.ScrapedProduct) {
+	if uc.pimSync == nil || !product.NeedsPIMSync() {
+		return
+	}
+	if err := uc.pimSync.Execute(ctx, product, uc.sourceName); err != nil {
+		log.Printf("[upsert] pim-sync failed for product %s: %v", product.ID, err)
+	}
 }
 

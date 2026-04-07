@@ -24,6 +24,7 @@ type ProductController struct {
 	removeBTUC      *productusecase.RemoveBusinessTypeUseCase
 	bulkAssignBTUC  *productusecase.BulkAssignBusinessTypeUseCase
 	autoMatchBTUC   *productusecase.AutoMatchBusinessTypesUseCase
+	getFiltersUC    *productusecase.GetProductFiltersUseCase
 }
 
 func NewProductController(
@@ -37,12 +38,13 @@ func NewProductController(
 	removeBTUC *productusecase.RemoveBusinessTypeUseCase,
 	bulkAssignBTUC *productusecase.BulkAssignBusinessTypeUseCase,
 	autoMatchBTUC *productusecase.AutoMatchBusinessTypesUseCase,
+	getFiltersUC *productusecase.GetProductFiltersUseCase,
 ) *ProductController {
 	return &ProductController{
 		listUC: listUC, getUC: getUC, priceHistUC: priceHistUC,
 		deleteUC: deleteUC, bulkDeleteUC: bulkDeleteUC, updateUC: updateUC,
 		assignBTUC: assignBTUC, removeBTUC: removeBTUC, bulkAssignBTUC: bulkAssignBTUC,
-		autoMatchBTUC: autoMatchBTUC,
+		autoMatchBTUC: autoMatchBTUC, getFiltersUC: getFiltersUC,
 	}
 }
 
@@ -386,6 +388,22 @@ func (c *ProductController) AutoMatchBusinessTypes(w http.ResponseWriter, r *htt
 	}
 
 	middleware.JSONResponse(w, http.StatusOK, result)
+}
+
+func (c *ProductController) GetProductFilters(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := middleware.TenantIDFromContext(r.Context())
+	if !ok {
+		middleware.JSONError(w, http.StatusBadRequest, "missing tenant ID")
+		return
+	}
+
+	filters, err := c.getFiltersUC.Execute(r.Context(), tenantID)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{"data": filters})
 }
 
 func parseIntQuery(r *http.Request, key string, defaultVal int) int {

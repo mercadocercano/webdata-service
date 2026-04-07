@@ -95,6 +95,14 @@ func (r *noopProductRepo) FindBusinessTypesForProduct(_ context.Context, _, _ uu
 	return nil, nil
 }
 
+func (r *noopProductRepo) GetFilters(_ context.Context, _ uuid.UUID) (*productport.ProductFilters, error) {
+	return &productport.ProductFilters{}, nil
+}
+
+func (r *noopProductRepo) MarkSyncedToPIM(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
 // --- Helper: build executeScrapingUseCase ---
 
 func buildExecuteUC(scraper scrapeport.ScraperPort) *scrapeuse.ExecuteScrapingUseCase {

@@ -95,6 +95,14 @@ func (r *failingProductRepo) FindBusinessTypesForProduct(_ context.Context, _, _
 	return nil, nil
 }
 
+func (r *failingProductRepo) GetFilters(_ context.Context, _ uuid.UUID) (*port.ProductFilters, error) {
+	return &port.ProductFilters{}, nil
+}
+
+func (r *failingProductRepo) MarkSyncedToPIM(_ context.Context, _, _ uuid.UUID) error {
+	return nil
+}
+
 func (m *mockProductRepo) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
 	p, ok := m.products[id.String()]
 	if !ok {
@@ -196,6 +204,14 @@ func (m *mockProductRepo) FindBusinessTypesForProduct(_ context.Context, _, prod
 		return nil, errors.New("product not found")
 	}
 	return p.BusinessTypes, nil
+}
+
+func (m *mockProductRepo) GetFilters(_ context.Context, _ uuid.UUID) (*port.ProductFilters, error) {
+	return &port.ProductFilters{}, nil
+}
+
+func (m *mockProductRepo) MarkSyncedToPIM(_ context.Context, _, _ uuid.UUID) error {
+	return nil
 }
 
 // --- T-PRD-A01: ListProducts ---

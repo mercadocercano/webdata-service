@@ -20,6 +20,9 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	repo := productpersistence.NewPostgresProductRepository(db)
 	categoryFinder := productadapter.NewSourceCategoryAdapter(db)
 	upsertUC := productusecase.NewUpsertProductsUseCase(repo, categoryFinder)
+	pimSyncer := productadapter.NewPIMCatalogSyncerAdapter()
+	syncToPIMUC := productusecase.NewSyncProductToPIMUseCase(repo, pimSyncer)
+	upsertUC.WithPIMSync(syncToPIMUC)
 	listUC := productusecase.NewListProductsUseCase(repo)
 	getUC := productusecase.NewGetProductUseCase(repo)
 	priceHistUC := productusecase.NewGetPriceHistoryUseCase(repo)
@@ -31,7 +34,8 @@ func NewProductModule(db *sql.DB) *ProductModule {
 	bulkAssignBTUC := productusecase.NewBulkAssignBusinessTypeUseCase(repo)
 	btProvider := productadapter.NewPIMBusinessTypeProvider()
 	autoMatchBTUC := productusecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
-	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC)
+	getFiltersUC := productusecase.NewGetProductFiltersUseCase(repo)
+	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC, getFiltersUC)
 
 	return &ProductModule{
 		Repo:       repo,

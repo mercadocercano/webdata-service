@@ -49,6 +49,7 @@ type ProductSummary struct {
 	Category           string
 	NormalizedCategory string
 	Brand              string
+	ImageURL           string
 	BusinessTypes      []value_object.BusinessTypeAssignment
 }
 

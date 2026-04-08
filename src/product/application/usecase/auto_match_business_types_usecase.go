@@ -25,6 +25,7 @@ type BusinessTypeMatch struct {
 type AutoMatchProposal struct {
 	ProductID             uuid.UUID           `json:"product_id"`
 	ProductTitle          string              `json:"product_title"`
+	ProductImageURL       string              `json:"product_image_url,omitempty"`
 	Category              string              `json:"category"`
 	NormalizedCategory    string              `json:"normalized_category"`
 	ProposedBusinessTypes []BusinessTypeMatch `json:"proposed_business_types"`
@@ -170,6 +171,7 @@ func (uc *AutoMatchBusinessTypesUseCase) fetchByIDs(
 			Category:           p.Category,
 			NormalizedCategory: p.NormalizedCategory,
 			Brand:              p.Brand,
+			ImageURL:           p.ImageURL,
 			BusinessTypes:      p.BusinessTypes,
 		})
 	}
@@ -198,6 +200,7 @@ func (uc *AutoMatchBusinessTypesUseCase) fetchAll(
 			Category:           p.Category,
 			NormalizedCategory: p.NormalizedCategory,
 			Brand:              p.Brand,
+			ImageURL:           p.ImageURL,
 			BusinessTypes:      p.BusinessTypes,
 		})
 	}
@@ -211,6 +214,7 @@ func (uc *AutoMatchBusinessTypesUseCase) matchProduct(
 	proposal := AutoMatchProposal{
 		ProductID:          p.ID,
 		ProductTitle:       p.Title,
+		ProductImageURL:    p.ImageURL,
 		Category:           p.Category,
 		NormalizedCategory: p.NormalizedCategory,
 	}

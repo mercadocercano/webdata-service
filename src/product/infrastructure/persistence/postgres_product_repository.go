@@ -66,13 +66,17 @@ func (r *PostgresProductRepository) Upsert(ctx context.Context, p *entity.Scrape
 }
 
 func (r *PostgresProductRepository) FindByID(ctx context.Context, tenantID, id uuid.UUID) (*entity.ScrapedProduct, error) {
-	query := `SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
+	where, args, argIdx := database.TenantWhereClause(tenantID)
+	where += fmt.Sprintf(" AND id=$%d", argIdx)
+	args = append(args, id)
+
+	query := fmt.Sprintf(`SELECT id, tenant_id, source_id, job_id, title, price, currency, original_price,
 		url, image_url, description, brand, category, sku, ean, in_stock,
 		normalized_category, confidence_score, content_hash, is_blocked, hidden_at,
 		first_seen_at, last_seen_at, price_changed_at, raw_data, created_at, updated_at, synced_to_pim_at
-		FROM webdata_products WHERE tenant_id=$1 AND id=$2`
+		FROM webdata_products %s`, where)
 
-	row := r.db.QueryRowContext(ctx, query, tenantID, id)
+	row := r.db.QueryRowContext(ctx, query, args...)
 	return r.scanProduct(row)
 }
 

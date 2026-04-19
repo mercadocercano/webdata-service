@@ -1,0 +1,1465 @@
+openapi: 3.1.0
+info:
+  title: Webdata Service API
+  description: |
+    Servicio de scraping de productos usando Firecrawl.
+    Gestiona fuentes de datos, jobs de scraping, productos scrapeados y estadisticas del pipeline.
+    Multi-tenant con aislamiento por X-Tenant-ID.
+  version: 1.0.0
+  contact:
+    name: Mercado Cercano
+    url: https://mercadocercano.com
+
+servers:
+  - url: http://localhost:8150
+    description: Desarrollo local (directo)
+  - url: http://localhost:8001/webdata
+    description: Desarrollo local (via Kong Gateway)
+
+security:
+  - BearerAuth: []
+    TenantHeader: []
+
+tags:
+  - name: Health
+    description: Health check del servicio
+  - name: Sources
+    description: CRUD de fuentes de scraping y trigger manual
+  - name: Jobs
+    description: Gestion de scraping jobs
+  - name: Products
+    description: Productos scrapeados, sync a PIM, business types y operaciones bulk
+  - name: Business Types
+    description: Proxy a pim-service para listar business types
+  - name: Stats
+    description: Estadisticas del pipeline y salud de fuentes
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Servicio saludable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: webdata-service
+
+  # ── Sources ──────────────────────────────────────────────
+
+  /api/v1/sources:
+    get:
+      operationId: listSources
+      summary: Listar fuentes de scraping
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filtrar por categoria (business type)
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Lista paginada de fuentes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSourcesResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      operationId: createSource
+      summary: Crear una fuente de scraping
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSourceRequest"
+      responses:
+        "201":
+          description: Fuente creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/v1/sources/{id}:
+    get:
+      operationId: getSource
+      summary: Obtener una fuente por ID
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Fuente encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: updateSource
+      summary: Actualizar una fuente (parcial)
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSourceRequest"
+      responses:
+        "200":
+          description: Fuente actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataSourceResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+    delete:
+      operationId: deleteSource
+      summary: Eliminar una fuente
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "204":
+          description: Fuente eliminada
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/sources/{id}/trigger:
+    post:
+      operationId: triggerScrape
+      summary: Disparar scraping manual de una fuente
+      tags: [Sources]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "201":
+          description: Job de scraping creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataJobResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Jobs ─────────────────────────────────────────────────
+
+  /api/v1/jobs:
+    get:
+      operationId: listJobs
+      summary: Listar scraping jobs
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+          description: Filtrar por estado del job
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Lista paginada de jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedJobsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/jobs/{id}:
+    get:
+      operationId: getJob
+      summary: Obtener un job por ID
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Job encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataJobResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/jobs/{id}/cancel:
+    post:
+      operationId: cancelJob
+      summary: Cancelar un job en ejecucion
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "204":
+          description: Job cancelado
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /api/v1/jobs/{id}/retry:
+    post:
+      operationId: retryJob
+      summary: Reintentar un job fallido
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "201":
+          description: Nuevo job creado como reintento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataJobResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  # ── Products ─────────────────────────────────────────────
+
+  /api/v1/products:
+    get:
+      operationId: listProducts
+      summary: Listar productos scrapeados
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filtrar por categoria
+        - name: brand
+          in: query
+          schema:
+            type: string
+          description: Filtrar por marca
+        - name: business_type
+          in: query
+          schema:
+            type: string
+          description: Filtrar por codigo de business type
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Busqueda por texto libre (titulo, marca, SKU)
+        - name: source_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar por ID de fuente
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+          description: Campo para ordenar resultados
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Orden ascendente o descendente
+        - name: without_image
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: Solo productos sin imagen
+        - name: not_synced
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: Solo productos no sincronizados a PIM
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Lista paginada de productos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedProductsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/filters:
+    get:
+      operationId: getProductFilters
+      summary: Obtener filtros disponibles para productos
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Filtros disponibles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ProductFilters"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/sync-to-pim:
+    post:
+      operationId: syncToPIM
+      summary: Sincronizar productos pendientes a PIM
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - name: source_name
+          in: query
+          schema:
+            type: string
+          description: Filtrar por nombre de fuente (opcional)
+      responses:
+        "200":
+          description: Resultado de la sincronizacion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncToPIMResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/bulk-delete:
+    post:
+      operationId: bulkDeleteProducts
+      summary: Eliminar multiples productos
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkDeleteRequest"
+      responses:
+        "200":
+          description: Productos eliminados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                    format: int64
+                    description: Cantidad de productos eliminados
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/bulk-assign-business-type:
+    post:
+      operationId: bulkAssignBusinessType
+      summary: Asignar un business type a multiples productos
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkAssignBusinessTypeRequest"
+      responses:
+        "200":
+          description: Resultado de la asignacion masiva
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkAssignBusinessTypeResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/auto-assign-business-types:
+    post:
+      operationId: autoMatchBusinessTypes
+      summary: Auto-detectar business types para productos por categoria/titulo
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoMatchRequest"
+      responses:
+        "200":
+          description: Propuestas de match generadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoMatchResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/enrich-from-global-catalog:
+    post:
+      operationId: enrichFromGlobalCatalog
+      summary: Enriquecer productos del catalogo global via scraping
+      description: |
+        Consulta PIM por productos incompletos (sin precio o imagen) y crea
+        scraping jobs para las fuentes activas del business type correspondiente.
+      parameters:
+        - name: business_type
+          in: query
+          schema:
+            type: string
+          description: Filtrar por business type especifico
+      responses:
+        "200":
+          description: Resultado del enrichment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichGlobalProductsResult"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: Use case de enrichment no inicializado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/products/{id}:
+    get:
+      operationId: getProduct
+      summary: Obtener un producto por ID
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Producto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataProductResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      operationId: patchProduct
+      summary: Actualizar producto (bloquear/desbloquear)
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_blocked]
+              properties:
+                is_blocked:
+                  type: boolean
+                  description: Marcar producto como bloqueado
+      responses:
+        "204":
+          description: Producto actualizado
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: deleteProduct
+      summary: Eliminar un producto
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "204":
+          description: Producto eliminado
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/products/{id}/price-history:
+    get:
+      operationId: getPriceHistory
+      summary: Historial de precios de un producto
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      responses:
+        "200":
+          description: Historial de precios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PriceHistoryRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{id}/business-types:
+    put:
+      operationId: assignBusinessTypes
+      summary: Asignar business types a un producto (reemplaza existentes)
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignBusinessTypesRequest"
+      responses:
+        "204":
+          description: Business types asignados
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/products/{id}/business-types/{code}:
+    delete:
+      operationId: removeBusinessType
+      summary: Remover un business type de un producto
+      tags: [Products]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - $ref: "#/components/parameters/PathID"
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Codigo del business type a remover
+      responses:
+        "204":
+          description: Business type removido
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Business Types ───────────────────────────────────────
+
+  /api/v1/business-types:
+    get:
+      operationId: listBusinessTypes
+      summary: Listar business types (proxy a pim-service)
+      tags: [Business Types]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Lista de business types desde pim-service
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Respuesta proxied directamente desde pim-service
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "502":
+          description: pim-service no disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── Stats ────────────────────────────────────────────────
+
+  /api/v1/stats:
+    get:
+      operationId: getStats
+      summary: Estadisticas generales del pipeline
+      tags: [Stats]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Estadisticas generales
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/StatsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/stats/sources:
+    get:
+      operationId: getSourceStats
+      summary: Estadisticas por fuente
+      tags: [Stats]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Estadisticas de cada fuente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SourceStatsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/stats/pipeline:
+    get:
+      operationId: getPipelineStatus
+      summary: Estado del pipeline por business type
+      tags: [Stats]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+        - name: business_type
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Business type para consultar el pipeline
+      responses:
+        "200":
+          description: Estado del pipeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT emitido por iam-service
+
+    TenantHeader:
+      type: apiKey
+      in: header
+      name: X-Tenant-ID
+      description: UUID del tenant
+
+  parameters:
+    XTenantID:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID del tenant
+
+    PathID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID del recurso
+
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Numero de pagina
+
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Cantidad de elementos por pagina
+
+  responses:
+    BadRequest:
+      description: Solicitud invalida
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFound:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    UnprocessableEntity:
+      description: Error de validacion de negocio
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalError:
+      description: Error interno del servidor
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    # ── Common ───────────────────────────────────────────
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Mensaje de error
+
+    Meta:
+      type: object
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    # ── Source ────────────────────────────────────────────
+
+    CreateSourceRequest:
+      type: object
+      required: [name, base_url, category, source_type, priority, tier]
+      properties:
+        name:
+          type: string
+          description: Nombre descriptivo de la fuente
+          example: "Ferreteria Rex - Herramientas"
+        base_url:
+          type: string
+          format: uri
+          description: URL base para scraping
+          example: "https://ferreteriarex.com.ar/herramientas"
+        category:
+          type: string
+          description: Categoria/business type de la fuente
+          example: "ferreteria"
+        source_type:
+          type: string
+          description: Tipo de fuente (ecommerce, catalog, etc)
+          example: "ecommerce"
+        city:
+          type: string
+          description: Ciudad de la fuente
+          example: "Buenos Aires"
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Prioridad de scraping
+          example: "medium"
+        tier:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: Nivel de la fuente (1=premium, 2=standard, 3=basic)
+          example: 2
+        firecrawl_method:
+          type: string
+          enum: [extract, scrape, crawl]
+          description: Metodo de Firecrawl a usar (default extract)
+          example: "extract"
+        cron_expression:
+          type: string
+          description: Expresion cron para scraping programado
+          example: "0 6 * * 1"
+        notes:
+          type: string
+          description: Notas adicionales
+        extraction_schema:
+          type: object
+          description: Schema JSON para extraccion LLM-powered de Firecrawl
+        crawl_config:
+          $ref: "#/components/schemas/CrawlConfig"
+
+    UpdateSourceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+          format: uri
+        category:
+          type: string
+        city:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        tier:
+          type: integer
+          minimum: 1
+          maximum: 3
+        firecrawl_method:
+          type: string
+          enum: [extract, scrape, crawl]
+        cron_expression:
+          type: string
+        notes:
+          type: string
+        is_active:
+          type: boolean
+        extraction_schema:
+          type: object
+        crawl_config:
+          $ref: "#/components/schemas/CrawlConfig"
+
+    CrawlConfig:
+      type: object
+      properties:
+        max_depth:
+          type: integer
+          description: Profundidad maxima de crawling
+        url_patterns:
+          type: array
+          items:
+            type: string
+          description: Patrones de URL a seguir
+        max_pages:
+          type: integer
+          description: Maximo de paginas a crawlear
+        page_param:
+          type: string
+          description: Parametro de paginacion en la URL (default "page")
+        ignore_robots:
+          type: boolean
+          description: Ignorar robots.txt
+
+    SourceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        base_url:
+          type: string
+          format: uri
+        category:
+          type: string
+        source_type:
+          type: string
+        city:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        tier:
+          type: integer
+        firecrawl_method:
+          type: string
+        cron_expression:
+          type: string
+        is_active:
+          type: boolean
+        health_score:
+          type: number
+          format: double
+          description: Score de salud (0.0 a 1.0)
+        total_runs:
+          type: integer
+        successful_runs:
+          type: integer
+        failed_runs:
+          type: integer
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_failure_reason:
+          type: string
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DataSourceResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/SourceResponse"
+
+    PaginatedSourcesResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceResponse"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    # ── Job ──────────────────────────────────────────────
+
+    JobResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        trigger_type:
+          type: string
+          enum: [manual, scheduled, enrichment]
+        firecrawl_job_id:
+          type: string
+          description: ID del job en Firecrawl
+        products_found:
+          type: integer
+        products_saved:
+          type: integer
+        error_message:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        retry_count:
+          type: integer
+        max_retries:
+          type: integer
+
+    DataJobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/JobResponse"
+
+    PaginatedJobsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobResponse"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    # ── Product ──────────────────────────────────────────
+
+    BusinessType:
+      type: object
+      properties:
+        code:
+          type: string
+          example: "ferreteria"
+        name:
+          type: string
+          example: "Ferreteria"
+
+    ProductResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        price:
+          type: number
+          format: double
+          nullable: true
+        currency:
+          type: string
+          example: "ARS"
+        original_price:
+          type: number
+          format: double
+          nullable: true
+        url:
+          type: string
+          format: uri
+        image_url:
+          type: string
+          format: uri
+        description:
+          type: string
+        brand:
+          type: string
+        category:
+          type: string
+        sku:
+          type: string
+        ean:
+          type: string
+        in_stock:
+          type: boolean
+        normalized_category:
+          type: string
+        confidence_score:
+          type: number
+          format: double
+          nullable: true
+        content_hash:
+          type: string
+        is_blocked:
+          type: boolean
+        hidden_at:
+          type: string
+          format: date-time
+          nullable: true
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        price_changed_at:
+          type: string
+          format: date-time
+          nullable: true
+        raw_data:
+          type: object
+          description: Datos crudos del scraping
+        business_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessType"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DataProductResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/ProductResponse"
+
+    PaginatedProductsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductResponse"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    PriceHistoryRecord:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        price:
+          type: number
+          format: double
+        recorded_at:
+          type: string
+          format: date-time
+
+    ProductFilters:
+      type: object
+      properties:
+        brands:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+        price_range:
+          type: object
+          properties:
+            min:
+              type: number
+              format: double
+            max:
+              type: number
+              format: double
+
+    # ── Bulk & Sync Operations ───────────────────────────
+
+    BulkDeleteRequest:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Lista de IDs de productos a eliminar
+          minItems: 1
+
+    AssignBusinessTypesRequest:
+      type: object
+      required: [business_types]
+      properties:
+        business_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessType"
+          minItems: 1
+
+    BulkAssignBusinessTypeRequest:
+      type: object
+      required: [product_ids, code]
+      properties:
+        product_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+        code:
+          type: string
+          description: Codigo del business type
+        name:
+          type: string
+          description: Nombre del business type
+
+    BulkAssignBusinessTypeResult:
+      type: object
+      properties:
+        assigned:
+          type: integer
+          description: Cantidad de productos asignados exitosamente
+        failed:
+          type: integer
+          description: Cantidad de productos que fallaron
+        errors:
+          type: array
+          items:
+            type: string
+          description: Detalle de errores por producto
+
+    AutoMatchRequest:
+      type: object
+      properties:
+        product_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs especificos (vacio = todos sin business type)
+        include_already_assigned:
+          type: boolean
+          default: false
+          description: Incluir productos que ya tienen business types asignados
+
+    AutoMatchResult:
+      type: object
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutoMatchProposal"
+        total_products:
+          type: integer
+        matched_count:
+          type: integer
+        unmatched_count:
+          type: integer
+
+    AutoMatchProposal:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        product_title:
+          type: string
+        product_image_url:
+          type: string
+          format: uri
+        category:
+          type: string
+        normalized_category:
+          type: string
+        proposed_business_types:
+          type: array
+          items:
+            $ref: "#/components/schemas/BusinessTypeMatch"
+        confidence_score:
+          type: number
+          format: double
+          description: Score de confianza del match (0.0 a 1.0)
+
+    BusinessTypeMatch:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        match_reason:
+          type: string
+          description: Razon del match (categoria, titulo, marca)
+
+    SyncToPIMResponse:
+      type: object
+      properties:
+        synced:
+          type: integer
+          description: Cantidad de productos sincronizados exitosamente
+        failed:
+          type: integer
+          description: Cantidad de productos que fallaron
+
+    EnrichGlobalProductsResult:
+      type: object
+      properties:
+        products_needing_enrichment:
+          type: integer
+        jobs_created:
+          type: integer
+        business_types_processed:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    # ── Stats ────────────────────────────────────────────
+
+    StatsResponse:
+      type: object
+      properties:
+        total_sources:
+          type: integer
+        active_sources:
+          type: integer
+        total_jobs:
+          type: integer
+        pending_jobs:
+          type: integer
+        running_jobs:
+          type: integer
+        completed_jobs:
+          type: integer
+        failed_jobs:
+          type: integer
+        total_products:
+          type: integer
+
+    SourceStatsResponse:
+      type: object
+      properties:
+        source_id:
+          type: string
+        name:
+          type: string
+        health_score:
+          type: number
+          format: double
+        total_runs:
+          type: integer
+        successful_runs:
+          type: integer
+        failed_runs:
+          type: integer
+        is_active:
+          type: boolean
+
+    PipelineStatusResponse:
+      type: object
+      properties:
+        business_type:
+          type: string
+        sources:
+          type: object
+          properties:
+            total:
+              type: integer
+            active:
+              type: integer
+            healthy:
+              type: integer
+            failing:
+              type: integer
+        products:
+          type: object
+          properties:
+            scraped:
+              type: integer
+            with_image:
+              type: integer
+            without_image:
+              type: integer
+            synced_to_pim:
+              type: integer
+            pending_sync:
+              type: integer
+        last_scrape:
+          type: string
+          format: date-time
+          nullable: true
+        next_scrape:
+          type: string
+          format: date-time
+          nullable: true

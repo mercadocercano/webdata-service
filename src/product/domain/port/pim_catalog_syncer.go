@@ -6,6 +6,22 @@ import (
 	"github.com/google/uuid"
 )
 
+// NeedsEnrichmentItem representa un producto de global_products con datos incompletos.
+type NeedsEnrichmentItem struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Brand        string `json:"brand"`
+	BusinessType string `json:"business_type"`
+	Category     string `json:"category"`
+	QualityScore int    `json:"quality_score"`
+}
+
+// ListNeedingEnrichmentResult es la respuesta del endpoint needs-enrichment de PIM.
+type ListNeedingEnrichmentResult struct {
+	Items []NeedsEnrichmentItem `json:"items"`
+	Total int                   `json:"total"`
+}
+
 type PIMGlobalProduct struct {
 	ID           uuid.UUID `json:"id"`
 	EAN          string    `json:"ean"`
@@ -41,4 +57,6 @@ type PIMCatalogSyncer interface {
 	SearchByNameBrand(ctx context.Context, tenantID uuid.UUID, name, brand string) (*PIMGlobalProduct, error)
 	Create(ctx context.Context, tenantID uuid.UUID, req CreatePIMProductRequest) (*PIMGlobalProduct, error)
 	Update(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, req UpdatePIMProductRequest) error
+	RefreshTemplateProducts(ctx context.Context) error
+	ListNeedingEnrichment(ctx context.Context, businessType string, limit, offset int) (*ListNeedingEnrichmentResult, error)
 }

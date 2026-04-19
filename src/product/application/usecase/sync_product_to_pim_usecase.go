@@ -138,5 +138,15 @@ func (uc *SyncProductToPIMUseCase) SyncPending(ctx context.Context, tenantID uui
 		}
 		synced++
 	}
+
+	// After batch sync, trigger PIM to refresh template products from global_products
+	if synced > 0 {
+		if err := uc.syncer.RefreshTemplateProducts(ctx); err != nil {
+			log.Printf("[sync-pim] warning: refresh template products failed: %v", err)
+		} else {
+			log.Printf("[sync-pim] template products refreshed after syncing %d products", synced)
+		}
+	}
+
 	return synced, failed, nil
 }

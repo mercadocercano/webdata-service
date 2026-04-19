@@ -29,6 +29,7 @@ type ProductController struct {
 	autoMatchBTUC   *productusecase.AutoMatchBusinessTypesUseCase
 	getFiltersUC    *productusecase.GetProductFiltersUseCase
 	syncToPIMUC     *productusecase.SyncProductToPIMUseCase
+	enrichUC        *productusecase.EnrichGlobalProductsUseCase
 }
 
 func NewProductController(
@@ -53,6 +54,11 @@ func NewProductController(
 	}
 }
 
+// SetEnrichUseCase inyecta el use case de enrichment (post-wiring, depende de source+job repos).
+func (c *ProductController) SetEnrichUseCase(uc *productusecase.EnrichGlobalProductsUseCase) {
+	c.enrichUC = uc
+}
+
 func (c *ProductController) ListProducts(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := middleware.TenantIDFromContext(r.Context())
 	if !ok {
@@ -69,6 +75,8 @@ func (c *ProductController) ListProducts(w http.ResponseWriter, r *http.Request)
 		SortOrder:        r.URL.Query().Get("sort_order"),
 		Page:             parseIntQuery(r, "page", 1),
 		PageSize:         parseIntQuery(r, "page_size", 20),
+		WithoutImage:     r.URL.Query().Get("without_image") == "true",
+		NotSyncedToPIM:   r.URL.Query().Get("not_synced") == "true",
 	}
 
 	if srcID := r.URL.Query().Get("source_id"); srcID != "" {
@@ -466,4 +474,21 @@ func parseIntQuery(r *http.Request, key string, defaultVal int) int {
 		return defaultVal
 	}
 	return n
+}
+
+// EnrichFromGlobalCatalog consulta PIM por productos incompletos y crea scraping jobs.
+// POST /api/v1/products/enrich-from-global-catalog?business_type=ferreteria
+func (c *ProductController) EnrichFromGlobalCatalog(w http.ResponseWriter, r *http.Request) {
+	if c.enrichUC == nil {
+		middleware.JSONError(w, http.StatusServiceUnavailable, "enrichment use case not initialized")
+		return
+	}
+
+	businessType := r.URL.Query().Get("business_type")
+	result, err := c.enrichUC.Execute(r.Context(), businessType)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	middleware.JSONResponse(w, http.StatusOK, result)
 }

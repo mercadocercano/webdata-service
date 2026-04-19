@@ -143,6 +143,12 @@ func (r *PostgresProductRepository) FindAll(ctx context.Context, tenantID uuid.U
 	if filter.WithoutBusinessTypes {
 		where += " AND id NOT IN (SELECT DISTINCT product_id FROM webdata_product_business_types)"
 	}
+	if filter.WithoutImage {
+		where += " AND (image_url IS NULL OR image_url = '')"
+	}
+	if filter.NotSyncedToPIM {
+		where += " AND synced_to_pim_at IS NULL"
+	}
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM webdata_products "+where, args...).Scan(&total); err != nil {

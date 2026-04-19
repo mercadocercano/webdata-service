@@ -15,4 +15,6 @@ type ListProductsRequest struct {
 	SortOrder          string     `json:"sort_order,omitempty"`
 	Page               int        `json:"page,omitempty"`
 	PageSize           int        `json:"page_size,omitempty"`
+	WithoutImage       bool       `json:"without_image,omitempty"`
+	NotSyncedToPIM     bool       `json:"not_synced,omitempty"`
 }

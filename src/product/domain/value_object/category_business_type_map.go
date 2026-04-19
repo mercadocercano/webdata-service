@@ -7,32 +7,43 @@ type CategoryBusinessTypeMapping struct {
 }
 
 var categoryToBusinessType = map[string]CategoryBusinessTypeMapping{
-	"supermercado":            {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"supermercado_mayorista":  {BusinessTypeCode: "almacen_mayorista", BusinessTypeName: "Almacén / Mayorista"},
-	"electronica":            {BusinessTypeCode: "electronica", BusinessTypeName: "Electrónica"},
+	// Alimentarios → almacen (código PIM: almacen)
+	"supermercado":           {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"almacen":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"lacteos":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"limpieza":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"bebidas":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"congelados":             {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"desayuno":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"golosinas":              {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"aceites":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"panaderia":              {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"snacks":                 {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"bazar":                  {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"mascotas":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+
+	// Mayoristas → supermercado (código PIM: supermercado)
+	"supermercado_mayorista": {BusinessTypeCode: "supermercado", BusinessTypeName: "Supermercado"},
+
+	// Tecnología → electronica (código PIM: electronica)
+	"electronica":            {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
+	"electrodomesticos":      {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
+	"tecnologia":             {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
+
+	// Farmacia → farmacia (código PIM: farmacia)
 	"farmacia_perfumeria":    {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
-	"ferreteria_construccion": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
-	"construccion_hogar":     {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
-	"indumentaria":           {BusinessTypeCode: "indumentaria", BusinessTypeName: "Indumentaria"},
-	"almacen":                {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"lacteos":                {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"limpieza":               {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"bebidas":                {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"congelados":             {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"desayuno":               {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"golosinas":              {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"aceites":                {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"panaderia":              {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"snacks":                 {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"bazar":                  {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"mascotas":               {BusinessTypeCode: "almacen_supermercado", BusinessTypeName: "Almacén / Supermercado"},
-	"electrodomesticos":      {BusinessTypeCode: "electronica", BusinessTypeName: "Electrónica"},
-	"tecnologia":             {BusinessTypeCode: "electronica", BusinessTypeName: "Electrónica"},
 	"cuidado-personal":       {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
 	"bebes":                  {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
-	"calzado":                {BusinessTypeCode: "indumentaria", BusinessTypeName: "Indumentaria"},
+
+	// Ferretería → ferreteria (código PIM: ferreteria)
+	"ferreteria_construccion": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"construccion_hogar":      {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
 	"construccion_ferreteria": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
-	"sanitarios":             {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"sanitarios":              {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+
+	// Indumentaria → ropa (código PIM: ropa)
+	"indumentaria":           {BusinessTypeCode: "ropa", BusinessTypeName: "Tienda de Ropa"},
+	"calzado":                {BusinessTypeCode: "ropa", BusinessTypeName: "Tienda de Ropa"},
 }
 
 // MapCategoryToBusinessType returns the business type assignment for a source category.

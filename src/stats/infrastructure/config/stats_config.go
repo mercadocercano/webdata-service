@@ -19,7 +19,8 @@ func NewStatsModule(
 ) *StatsModule {
 	statsUC := statsusecase.NewGetStatsUseCase(sourceRepo, jobRepo, productRepo)
 	sourceStatsUC := statsusecase.NewGetSourceStatsUseCase(sourceRepo)
-	ctrl := statscontroller.NewStatsController(statsUC, sourceStatsUC)
+	pipelineStatusUC := statsusecase.NewGetPipelineStatusUseCase(sourceRepo, jobRepo, productRepo)
+	ctrl := statscontroller.NewStatsController(statsUC, sourceStatsUC, pipelineStatusUC)
 
 	return &StatsModule{Controller: ctrl}
 }

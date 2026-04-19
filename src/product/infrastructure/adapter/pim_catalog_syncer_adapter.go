@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -171,6 +172,70 @@ func (a *PIMCatalogSyncerAdapter) Update(ctx context.Context, tenantID uuid.UUID
 		return fmt.Errorf("pim-service returned status %d on update", resp.StatusCode)
 	}
 	return nil
+}
+
+// RefreshTemplateProducts triggers PIM to recalculate business_type_product_templates
+// from verified global_products. Called after a batch sync completes.
+func (a *PIMCatalogSyncerAdapter) RefreshTemplateProducts(ctx context.Context) error {
+	endpoint := fmt.Sprintf("%s/api/v1/internal/refresh-template-products", a.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("creating refresh request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("pim-service unreachable for refresh: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("pim-service returned status %d on refresh", resp.StatusCode)
+	}
+	return nil
+}
+
+// ListNeedingEnrichment consulta PIM por productos de global_products con datos incompletos.
+func (a *PIMCatalogSyncerAdapter) ListNeedingEnrichment(ctx context.Context, businessType string, limit, offset int) (*port.ListNeedingEnrichmentResult, error) {
+	params := url.Values{}
+	if businessType != "" {
+		params.Set("business_type", businessType)
+	}
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		params.Set("offset", strconv.Itoa(offset))
+	}
+
+	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/products/needs-enrichment", a.baseURL)
+	if len(params) > 0 {
+		endpoint += "?" + params.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("X-User-Role", "marketplace_admin")
+	req.Header.Set("X-Tenant-ID", "00000000-0000-0000-0000-000000000000")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("pim-service unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pim-service returned status %d on needs-enrichment", resp.StatusCode)
+	}
+
+	var result port.ListNeedingEnrichmentResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	return &result, nil
 }
 
 func (a *PIMCatalogSyncerAdapter) setHeaders(req *http.Request, tenantID uuid.UUID) {

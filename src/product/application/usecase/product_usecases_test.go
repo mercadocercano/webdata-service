@@ -424,8 +424,8 @@ func TestUpsertProductsUseCase_AssignsBusinessType_NewProduct(t *testing.T) {
 	// Find the created product and check business types
 	for _, p := range repo.products {
 		require.Len(t, p.BusinessTypes, 1, "new product should have 1 business type assigned")
-		assert.Equal(t, "almacen_supermercado", p.BusinessTypes[0].BusinessTypeCode)
-		assert.Equal(t, "Almacén / Supermercado", p.BusinessTypes[0].BusinessTypeName)
+		assert.Equal(t, "almacen", p.BusinessTypes[0].BusinessTypeCode)
+		assert.Equal(t, "Almacén de Barrio", p.BusinessTypes[0].BusinessTypeName)
 	}
 }
 
@@ -459,7 +459,7 @@ func TestUpsertProductsUseCase_DoesNotOverwriteExistingBusinessTypes(t *testing.
 	require.NoError(t, err)
 	for _, p := range repo.products {
 		assert.Len(t, p.BusinessTypes, 1, "existing business types should not be overwritten")
-		assert.Equal(t, "almacen_supermercado", p.BusinessTypes[0].BusinessTypeCode)
+		assert.Equal(t, "almacen", p.BusinessTypes[0].BusinessTypeCode)
 	}
 }
 

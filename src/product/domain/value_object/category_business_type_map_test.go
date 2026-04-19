@@ -14,13 +14,17 @@ func TestMapCategoryToBusinessType_AllKnownCategories(t *testing.T) {
 		expectedCode     string
 		expectedName     string
 	}{
-		{"supermercado", "almacen_supermercado", "Almacén / Supermercado"},
-		{"supermercado_mayorista", "almacen_mayorista", "Almacén / Mayorista"},
-		{"electronica", "electronica", "Electrónica"},
+		{"supermercado", "almacen", "Almacén de Barrio"},
+		{"almacen", "almacen", "Almacén de Barrio"},
+		{"supermercado_mayorista", "supermercado", "Supermercado"},
+		{"electronica", "electronica", "Casa de Electrodomésticos"},
 		{"farmacia_perfumeria", "farmacia", "Farmacia"},
 		{"ferreteria_construccion", "ferreteria", "Ferretería"},
 		{"construccion_hogar", "ferreteria", "Ferretería"},
-		{"indumentaria", "indumentaria", "Indumentaria"},
+		{"indumentaria", "ropa", "Tienda de Ropa"},
+		{"calzado", "ropa", "Tienda de Ropa"},
+		{"lacteos", "almacen", "Almacén de Barrio"},
+		{"cuidado-personal", "farmacia", "Farmacia"},
 	}
 
 	for _, tc := range cases {

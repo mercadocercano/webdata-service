@@ -57,6 +57,9 @@ func main() {
 	// Rewire source module with correct job repo
 	sourceModule = sourceconfig.NewSourceModule(db, scrapingModule.Repo)
 
+	// Wire enrichment use case now that source+job repos are ready
+	productModule.WireEnrichment(sourceModule.Repo, scrapingModule.Repo)
+
 	statsModule := statsconfig.NewStatsModule(sourceModule.Repo, scrapingModule.Repo, productModule.Repo)
 	btProxyCtrl := productcontroller.NewBusinessTypeProxyController()
 

@@ -46,6 +46,8 @@ func (uc *ListProductsUseCase) Execute(ctx context.Context, tenantID uuid.UUID, 
 		SortOrder:          req.SortOrder,
 		Page:               req.Page,
 		PageSize:           req.PageSize,
+		WithoutImage:       req.WithoutImage,
+		NotSyncedToPIM:     req.NotSyncedToPIM,
 	}
 
 	products, total, err := uc.repo.FindAll(ctx, tenantID, filter)

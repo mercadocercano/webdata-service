@@ -57,6 +57,7 @@ func NewRouter(
 			r.Post("/bulk-delete", productCtrl.BulkDeleteProducts)
 			r.Post("/bulk-assign-business-type", productCtrl.BulkAssignBusinessType)
 			r.Post("/auto-assign-business-types", productCtrl.AutoMatchBusinessTypes)
+			r.Post("/enrich-from-global-catalog", productCtrl.EnrichFromGlobalCatalog)
 			r.Get("/{id}", productCtrl.GetProduct)
 			r.Delete("/{id}", productCtrl.DeleteProduct)
 			r.Patch("/{id}", productCtrl.PatchProduct)
@@ -72,6 +73,7 @@ func NewRouter(
 		r.Route("/stats", func(r chi.Router) {
 			r.Get("/", statsCtrl.GetStats)
 			r.Get("/sources", statsCtrl.GetSourceStats)
+			r.Get("/pipeline", statsCtrl.GetPipelineStatus)
 		})
 	})
 

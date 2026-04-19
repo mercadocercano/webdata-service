@@ -2,6 +2,7 @@ package entity_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
@@ -128,6 +129,94 @@ func TestBusinessTypeAssignment_New_WithEmptyCode_ReturnsError(t *testing.T) {
 	_, err := value_object.NewBusinessTypeAssignment("", "Empty")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "code")
+}
+
+// --- PIM Sync methods ---
+
+func TestScrapedProduct_IsReadyForPIMSync_WithAllFields_ReturnsTrue(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.True(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_IsReadyForPIMSync_WithoutPrice_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.Price = nil
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.False(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_IsReadyForPIMSync_WithoutImage_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.False(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_IsReadyForPIMSync_WithoutCategory_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.False(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_IsReadyForPIMSync_WhenBlocked_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+	p.IsBlocked = true
+
+	assert.False(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_IsReadyForPIMSync_WhenHidden_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+	now := time.Now()
+	p.HiddenAt = &now
+
+	assert.False(t, p.IsReadyForPIMSync())
+}
+
+func TestScrapedProduct_NeedsPIMSync_WhenReadyAndNotSynced_ReturnsTrue(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.True(t, p.NeedsPIMSync())
+}
+
+func TestScrapedProduct_NeedsPIMSync_WhenAlreadySynced_ReturnsFalse(t *testing.T) {
+	params := aNewProduct()
+	params.ImageURL = "https://example.com/img.jpg"
+	params.Category = "Almacén"
+	p, _ := entity.NewScrapedProduct(params)
+	p.MarkSyncedToPIM()
+
+	assert.False(t, p.NeedsPIMSync())
+}
+
+func TestScrapedProduct_MarkSyncedToPIM_SetsSyncedAt(t *testing.T) {
+	params := aNewProduct()
+	p, _ := entity.NewScrapedProduct(params)
+
+	assert.Nil(t, p.SyncedToPIMAt)
+	p.MarkSyncedToPIM()
+
+	assert.NotNil(t, p.SyncedToPIMAt)
+	assert.True(t, p.SyncedToPIMAt.Before(time.Now().Add(time.Second)))
 }
 
 func TestContentHash_Generate_DiffersForDifferentInputs(t *testing.T) {

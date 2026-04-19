@@ -54,17 +54,19 @@ type ProductSummary struct {
 }
 
 type ProductFilter struct {
-	SourceID           *uuid.UUID
-	Category           string
-	NormalizedCategory string
-	Brand              string
-	BusinessTypeCode   string
-	MinPrice           *float64
-	MaxPrice           *float64
-	Query              string
-	SortBy             string
-	SortOrder          string
-	Page               int
-	PageSize           int
+	SourceID             *uuid.UUID
+	Category             string
+	NormalizedCategory   string
+	Brand                string
+	BusinessTypeCode     string
+	MinPrice             *float64
+	MaxPrice             *float64
+	Query                string
+	SortBy               string
+	SortOrder            string
+	Page                 int
+	PageSize             int
 	WithoutBusinessTypes bool
+	WithoutImage         bool
+	NotSyncedToPIM       bool
 }

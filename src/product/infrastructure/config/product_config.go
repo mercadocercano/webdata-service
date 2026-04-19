@@ -3,17 +3,26 @@ package config
 import (
 	"database/sql"
 
-	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
-	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
-	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	productport "github.com/mercadocercano/webdata-service/src/product/domain/port"
+	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
+	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
+	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
+	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
 )
 
 type ProductModule struct {
 	Repo       productport.ProductRepository
+	PIMSyncer  productport.PIMCatalogSyncer
 	UpsertUC   *productusecase.UpsertProductsUseCase
 	Controller *productcontroller.ProductController
+}
+
+// WireEnrichment inyecta el use case de enrichment una vez que sourceRepo y jobRepo están listos.
+func (m *ProductModule) WireEnrichment(sourceRepo sourceport.SourceRepository, jobRepo scrapingport.ScrapingJobRepository) {
+	enrichUC := productusecase.NewEnrichGlobalProductsUseCase(m.PIMSyncer, sourceRepo, jobRepo)
+	m.Controller.SetEnrichUseCase(enrichUC)
 }
 
 func NewProductModule(db *sql.DB) *ProductModule {
@@ -39,6 +48,7 @@ func NewProductModule(db *sql.DB) *ProductModule {
 
 	return &ProductModule{
 		Repo:       repo,
+		PIMSyncer:  pimSyncer,
 		UpsertUC:   upsertUC,
 		Controller: ctrl,
 	}

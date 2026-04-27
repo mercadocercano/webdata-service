@@ -50,9 +50,6 @@ ARG GITHUB_TOKEN
 ENV GOPRIVATE=github.com/mercadocercano/*
 RUN if [ -n "$GITHUB_TOKEN" ]; then git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; fi
 
-COPY --from=libs-criteria /. /libs/criteria/
-COPY --from=libs-middleware /. /libs/middleware/
-
 COPY --chown=appuser:appgroup go.mod go.sum ./
 RUN go mod download
 

@@ -5,11 +5,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	sourcecontroller "github.com/mercadocercano/webdata-service/src/source/infrastructure/controller"
-	scrapingcontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
+	enrichcontroller "github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/controller"
 	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
-	statscontroller "github.com/mercadocercano/webdata-service/src/stats/infrastructure/controller"
+	scrapingcontroller "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/controller"
 	"github.com/mercadocercano/webdata-service/src/shared/middleware"
+	sourcecontroller "github.com/mercadocercano/webdata-service/src/source/infrastructure/controller"
+	statscontroller "github.com/mercadocercano/webdata-service/src/stats/infrastructure/controller"
 )
 
 func NewRouter(
@@ -18,6 +19,7 @@ func NewRouter(
 	productCtrl *productcontroller.ProductController,
 	statsCtrl *statscontroller.StatsController,
 	btProxyCtrl *productcontroller.BusinessTypeProxyController,
+	enrichCtrl *enrichcontroller.EnrichmentHandler,
 ) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
@@ -74,6 +76,12 @@ func NewRouter(
 			r.Get("/", statsCtrl.GetStats)
 			r.Get("/sources", statsCtrl.GetSourceStats)
 			r.Get("/pipeline", statsCtrl.GetPipelineStatus)
+		})
+
+		// Enrichment
+		r.Route("/enrichment", func(r chi.Router) {
+			r.Post("/run", enrichCtrl.RunBatch)
+			r.Get("/status", enrichCtrl.GetStatus)
 		})
 	})
 

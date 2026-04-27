@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/api"
+	enrichconfig "github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/config"
+	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
+	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/adapter"
 	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/scheduler"
-	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
-	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
+	"github.com/mercadocercano/webdata-service/src/shared/database"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
-	"github.com/mercadocercano/webdata-service/src/shared/database"
 )
 
 func main() {
@@ -62,6 +63,7 @@ func main() {
 
 	statsModule := statsconfig.NewStatsModule(sourceModule.Repo, scrapingModule.Repo, productModule.Repo)
 	btProxyCtrl := productcontroller.NewBusinessTypeProxyController()
+	enrichModule := enrichconfig.NewEnrichmentModule(db)
 
 	router := api.NewRouter(
 		sourceModule.Controller,
@@ -69,6 +71,7 @@ func main() {
 		productModule.Controller,
 		statsModule.Controller,
 		btProxyCtrl,
+		enrichModule.Handler,
 	)
 
 	// Scheduler

@@ -39,6 +39,13 @@ func (m *mockPIMClient) ListNeedingEnrichmentPage(_ context.Context, _ string, _
 	return &port.NeedsEnrichmentResult{Items: m.items, Total: m.total}, nil
 }
 
+func (m *mockPIMClient) GetProductsByIDs(_ context.Context, _ []string) (*port.NeedsEnrichmentResult, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &port.NeedsEnrichmentResult{Items: m.items, Total: m.total}, nil
+}
+
 func (m *mockPIMClient) UpdateProduct(_ context.Context, productID string, req port.UpdateProductRequest) error {
 	m.updated[productID] = req
 	return nil

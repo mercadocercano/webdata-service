@@ -10,9 +10,10 @@ import (
 )
 
 type RunEnrichmentBatchRequest struct {
-	BusinessType   string `json:"business_type"`
-	Limit          int    `json:"limit"`
-	ForceReprocess bool   `json:"force_reprocess"`
+	BusinessType   string   `json:"business_type"`
+	Limit          int      `json:"limit"`
+	ForceReprocess bool     `json:"force_reprocess"`
+	ProductIDs     []string `json:"product_ids,omitempty"`
 }
 
 type RunEnrichmentBatchResult struct {
@@ -50,6 +51,52 @@ func NewRunEnrichmentBatchUseCase(
 const pageSize = 100
 
 func (uc *RunEnrichmentBatchUseCase) Execute(ctx context.Context, req RunEnrichmentBatchRequest) (*RunEnrichmentBatchResult, error) {
+	if len(req.ProductIDs) > 0 {
+		return uc.executeOnDemand(ctx, req)
+	}
+	return uc.executeBatch(ctx, req)
+}
+
+func (uc *RunEnrichmentBatchUseCase) executeOnDemand(ctx context.Context, req RunEnrichmentBatchRequest) (*RunEnrichmentBatchResult, error) {
+	if len(req.ProductIDs) > 100 {
+		return nil, fmt.Errorf("on-demand enrichment acepta máximo 100 product_ids")
+	}
+
+	page, err := uc.pim.GetProductsByIDs(ctx, req.ProductIDs)
+	if err != nil {
+		return nil, fmt.Errorf("fetching products by ids: %w", err)
+	}
+
+	result := &RunEnrichmentBatchResult{}
+	for _, item := range page.Items {
+		key := resolveKey(item)
+
+		skipped, err := uc.shouldSkip(ctx, item.ID, req.ForceReprocess)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: skip check failed: %v", item.ID, err))
+			continue
+		}
+		if skipped {
+			result.Skipped++
+			continue
+		}
+
+		cost, err := uc.processItem(ctx, item, key)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", item.ID, err))
+			continue
+		}
+
+		result.Processed++
+		result.TotalCost += cost
+	}
+
+	return result, nil
+}
+
+func (uc *RunEnrichmentBatchUseCase) executeBatch(ctx context.Context, req RunEnrichmentBatchRequest) (*RunEnrichmentBatchResult, error) {
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 50
@@ -67,14 +114,12 @@ func (uc *RunEnrichmentBatchUseCase) Execute(ctx context.Context, req RunEnrichm
 			break
 		}
 
-		processedThisPage := 0
 		for _, item := range page.Items {
 			if result.Processed >= limit {
 				break
 			}
 			key := resolveKey(item)
 
-			// Siempre skip-check por product_id — es el identificador estable
 			skipped, err := uc.shouldSkip(ctx, item.ID, req.ForceReprocess)
 			if err != nil {
 				result.Failed++
@@ -95,12 +140,10 @@ func (uc *RunEnrichmentBatchUseCase) Execute(ctx context.Context, req RunEnrichm
 
 			result.Processed++
 			result.TotalCost += cost
-			processedThisPage++
 		}
 
 		offset += pageSize
 
-		// Si devolvió menos que pageSize, no hay más páginas
 		if len(page.Items) < pageSize {
 			break
 		}

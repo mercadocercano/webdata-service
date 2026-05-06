@@ -42,6 +42,7 @@ type EnrichmentStatus struct {
 type PIMClient interface {
 	ListNeedingEnrichment(ctx context.Context, businessType string, limit int) (*NeedsEnrichmentResult, error)
 	ListNeedingEnrichmentPage(ctx context.Context, businessType string, limit, offset int) (*NeedsEnrichmentResult, error)
+	GetProductsByIDs(ctx context.Context, ids []string) (*NeedsEnrichmentResult, error)
 	UpdateProduct(ctx context.Context, productID string, req UpdateProductRequest) error
 }
 

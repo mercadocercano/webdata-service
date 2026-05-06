@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/port"
@@ -86,6 +87,43 @@ func (a *PIMClientAdapter) listNeedingEnrichmentPage(ctx context.Context, busine
 	return &port.NeedsEnrichmentResult{
 		Items: body.Products,
 		Total: body.Pagination.Total,
+	}, nil
+}
+
+// byIDsResponse mapea la respuesta de /global-catalog/by-ids
+type byIDsResponse struct {
+	Products []port.NeedsEnrichmentItem `json:"products"`
+	Total    int                        `json:"total"`
+}
+
+// GetProductsByIDs obtiene productos específicos del catálogo global por sus IDs.
+func (a *PIMClientAdapter) GetProductsByIDs(ctx context.Context, ids []string) (*port.NeedsEnrichmentResult, error) {
+	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/by-ids?ids=%s", a.baseURL, strings.Join(ids, ","))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("pim by-ids request: %w", err)
+	}
+	a.setServiceHeaders(req)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("pim-service unreachable on by-ids: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pim-service returned status %d on by-ids", resp.StatusCode)
+	}
+
+	var body byIDsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decoding by-ids response: %w", err)
+	}
+
+	return &port.NeedsEnrichmentResult{
+		Items: body.Products,
+		Total: body.Total,
 	}, nil
 }
 

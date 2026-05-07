@@ -65,6 +65,10 @@ func (m *mockProductSource) FindByName(_ context.Context, _ string) (*entity.Pro
 	return m.data, m.err
 }
 
+func (m *mockProductSource) FindByNameWithContext(_ context.Context, _, _, _ string) (*entity.ProductData, error) {
+	return m.data, m.err
+}
+
 func (m *mockProductSource) SourceName() entity.Source {
 	return m.sourceName
 }
@@ -114,6 +118,18 @@ func (m *mockEnrichmentRepo) Save(_ context.Context, res *entity.ImageResolution
 
 func (m *mockEnrichmentRepo) GetStatus(_ context.Context) (*port.EnrichmentStatus, error) {
 	return &port.EnrichmentStatus{TotalResolved: len(m.saved), BySource: make(map[string]int)}, nil
+}
+
+func (m *mockEnrichmentRepo) RejectImage(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (m *mockEnrichmentRepo) GetRejectedURLs(_ context.Context, _ string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m *mockEnrichmentRepo) GetCurrentRawURL(_ context.Context, _ string) (string, error) {
+	return "", nil
 }
 
 // --- Tests ---

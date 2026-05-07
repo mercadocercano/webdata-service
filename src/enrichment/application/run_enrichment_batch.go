@@ -198,31 +198,45 @@ func (uc *RunEnrichmentBatchUseCase) processItem(ctx context.Context, item port.
 }
 
 func (uc *RunEnrichmentBatchUseCase) findProductData(ctx context.Context, item port.NeedsEnrichmentItem) (*entity.ProductData, error) {
-	key := item.EAN
-	if key == "" {
-		key = item.Name
+	rejectedURLs, err := uc.repo.GetRejectedURLs(ctx, item.ID)
+	if err != nil {
+		return nil, fmt.Errorf("getting rejected URLs: %w", err)
 	}
 
 	for _, src := range uc.sources {
-		var data *entity.ProductData
-		var err error
-
-		if item.EAN != "" {
-			data, err = src.FindByGTIN(ctx, item.EAN)
-		} else {
-			data, err = src.FindByName(ctx, item.Name)
-		}
-
+		data, err := uc.fetchFromSource(ctx, src, item)
 		if err != nil {
 			return nil, fmt.Errorf("source %s error: %w", src.SourceName(), err)
 		}
-		if data != nil && data.ImageURL != "" {
-			return data, nil
+		if data == nil || data.ImageURL == "" {
+			continue
 		}
-		_ = key
+		if isRejectedURL(data.ImageURL, rejectedURLs) {
+			continue
+		}
+		return data, nil
 	}
 
 	return nil, nil
+}
+
+func (uc *RunEnrichmentBatchUseCase) fetchFromSource(ctx context.Context, src port.ProductSource, item port.NeedsEnrichmentItem) (*entity.ProductData, error) {
+	if item.EAN != "" {
+		return src.FindByGTIN(ctx, item.EAN)
+	}
+	if item.Category != "" || item.BusinessType != "" {
+		return src.FindByNameWithContext(ctx, item.Name, item.Category, item.BusinessType)
+	}
+	return src.FindByName(ctx, item.Name)
+}
+
+func isRejectedURL(imageURL string, rejectedURLs []string) bool {
+	for _, rejected := range rejectedURLs {
+		if rejected == imageURL {
+			return true
+		}
+	}
+	return false
 }
 
 func (uc *RunEnrichmentBatchUseCase) enhance(ctx context.Context, data *entity.ProductData) ([]byte, string, int, entity.Enhancer, error) {

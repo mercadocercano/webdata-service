@@ -32,6 +32,7 @@ type ImageResolution struct {
 	Enhancer     Enhancer
 	CostCents    int
 	QualityScore int
+	RejectedURLs []string
 	ResolvedAt   time.Time
 	UpdatedAt    time.Time
 }

@@ -10,6 +10,7 @@ import (
 type ProductSource interface {
 	FindByGTIN(ctx context.Context, gtin string) (*entity.ProductData, error)
 	FindByName(ctx context.Context, name string) (*entity.ProductData, error)
+	FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error)
 	SourceName() entity.Source
 }
 
@@ -29,6 +30,9 @@ type EnrichmentRepository interface {
 	IsResolved(ctx context.Context, gtin string) (bool, error)
 	Save(ctx context.Context, resolution *entity.ImageResolution) error
 	GetStatus(ctx context.Context) (*EnrichmentStatus, error)
+	RejectImage(ctx context.Context, productID string, imageURL string) error
+	GetRejectedURLs(ctx context.Context, productID string) ([]string, error)
+	GetCurrentRawURL(ctx context.Context, productID string) (string, error)
 }
 
 type EnrichmentStatus struct {

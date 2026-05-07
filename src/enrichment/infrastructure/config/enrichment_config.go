@@ -42,8 +42,9 @@ func NewEnrichmentModule(db *sql.DB) *EnrichmentModule {
 
 	runBatchUC := application.NewRunEnrichmentBatchUseCase(pimClient, sources, enhancer, store, repo)
 	getStatusUC := application.NewGetEnrichmentStatusUseCase(repo)
+	rejectImageUC := application.NewRejectImageUseCase(repo, pimClient)
 
-	handler := enrichcontroller.NewEnrichmentHandler(runBatchUC, getStatusUC)
+	handler := enrichcontroller.NewEnrichmentHandler(runBatchUC, getStatusUC, rejectImageUC)
 
 	return &EnrichmentModule{Handler: handler}
 }

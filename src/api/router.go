@@ -82,6 +82,7 @@ func NewRouter(
 		r.Route("/enrichment", func(r chi.Router) {
 			r.Post("/run", enrichCtrl.RunBatch)
 			r.Get("/status", enrichCtrl.GetStatus)
+			r.Post("/reject", enrichCtrl.RejectImage)
 		})
 	})
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/port"
 )
@@ -57,6 +58,56 @@ func (r *PostgresEnrichmentRepository) Save(ctx context.Context, res *entity.Ima
 		return fmt.Errorf("saving resolution: %w", err)
 	}
 	return nil
+}
+
+func (r *PostgresEnrichmentRepository) RejectImage(ctx context.Context, productID string, imageURL string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO product_image_resolutions
+			(product_id, source, raw_url, cdn_url, cdn_key, enhancer, rejected_urls, resolved_at, updated_at)
+		VALUES ($1, 'manual', '', '', '', 'passthrough', ARRAY[$2::TEXT], NOW(), NOW())
+		ON CONFLICT (product_id) DO UPDATE SET
+			rejected_urls = CASE
+				WHEN $2 = ANY(product_image_resolutions.rejected_urls)
+				THEN product_image_resolutions.rejected_urls
+				ELSE array_append(product_image_resolutions.rejected_urls, $2)
+			END,
+			raw_url    = '',
+			updated_at = NOW()
+	`, productID, imageURL)
+	if err != nil {
+		return fmt.Errorf("rejecting image for product %s: %w", productID, err)
+	}
+	return nil
+}
+
+func (r *PostgresEnrichmentRepository) GetRejectedURLs(ctx context.Context, productID string) ([]string, error) {
+	var urls []string
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(rejected_urls, '{}') FROM product_image_resolutions WHERE product_id = $1",
+		productID,
+	).Scan(pq.Array(&urls))
+	if err == sql.ErrNoRows {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("getting rejected URLs for product %s: %w", productID, err)
+	}
+	return urls, nil
+}
+
+func (r *PostgresEnrichmentRepository) GetCurrentRawURL(ctx context.Context, productID string) (string, error) {
+	var rawURL string
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(raw_url, '') FROM product_image_resolutions WHERE product_id = $1",
+		productID,
+	).Scan(&rawURL)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("getting current raw URL for product %s: %w", productID, err)
+	}
+	return rawURL, nil
 }
 
 func (r *PostgresEnrichmentRepository) GetStatus(ctx context.Context) (*port.EnrichmentStatus, error) {

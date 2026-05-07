@@ -25,6 +25,10 @@ func (m *mockMLSource) FindByName(_ context.Context, _ string) (*entity.ProductD
 	return m.data, m.err
 }
 
+func (m *mockMLSource) FindByNameWithContext(_ context.Context, _, _, _ string) (*entity.ProductData, error) {
+	return m.data, m.err
+}
+
 func (m *mockMLSource) SourceName() entity.Source {
 	return entity.SourceML
 }

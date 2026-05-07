@@ -46,6 +46,14 @@ func (a *FirecrawlEnrichAdapter) FindByName(ctx context.Context, name string) (*
 	return a.agentSearch(ctx, name)
 }
 
+func (a *FirecrawlEnrichAdapter) FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error) {
+	if a.apiKey == "" {
+		return nil, nil
+	}
+	query := buildContextualQuery(name, category, businessType)
+	return a.agentSearch(ctx, query)
+}
+
 func (a *FirecrawlEnrichAdapter) agentSearch(ctx context.Context, query string) (*entity.ProductData, error) {
 	prompt := fmt.Sprintf(
 		"Find official product image URL, brand and category for: %s. Return JSON only with fields image_url, brand, category. No markdown.",
@@ -122,6 +130,18 @@ func parseFirecrawlAgentResponse(body io.Reader, query string) (*entity.ProductD
 		ImageURL: productData.ImageURL,
 		Source:   entity.SourceFirecrawl,
 	}, nil
+}
+
+// buildContextualQuery construye una query enriquecida con categoría y tipo de negocio.
+func buildContextualQuery(name, category, businessType string) string {
+	query := name
+	if category != "" {
+		query += " " + category
+	}
+	if businessType != "" {
+		query += " " + businessType
+	}
+	return strings.TrimSpace(query)
 }
 
 // extractJSON extrae JSON de una string que puede venir con markdown fences.

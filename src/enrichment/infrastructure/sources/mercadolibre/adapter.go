@@ -70,6 +70,25 @@ func (a *MLAdapter) FindByName(ctx context.Context, name string) (*entity.Produc
 	return a.search(ctx, name)
 }
 
+func (a *MLAdapter) FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error) {
+	if a.clientID == "" || a.clientSecret == "" {
+		return nil, nil
+	}
+	query := buildContextualQuery(name, category, businessType)
+	return a.search(ctx, query)
+}
+
+func buildContextualQuery(name, category, businessType string) string {
+	query := name
+	if category != "" {
+		query += " " + category
+	}
+	if businessType != "" {
+		query += " " + businessType
+	}
+	return strings.TrimSpace(query)
+}
+
 func (a *MLAdapter) search(ctx context.Context, query string) (*entity.ProductData, error) {
 	token, err := a.getToken(ctx)
 	if err != nil {

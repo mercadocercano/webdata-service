@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/entity"
@@ -45,6 +46,22 @@ func (s *DALLEGeneratorSource) SourceName() entity.Source {
 
 func (s *DALLEGeneratorSource) FindByGTIN(_ context.Context, _ string) (*entity.ProductData, error) {
 	return nil, nil
+}
+
+func (s *DALLEGeneratorSource) FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error) {
+	query := buildContextualQuery(name, category, businessType)
+	return s.FindByName(ctx, query)
+}
+
+func buildContextualQuery(name, category, businessType string) string {
+	query := name
+	if category != "" {
+		query += " " + category
+	}
+	if businessType != "" {
+		query += " " + businessType
+	}
+	return strings.TrimSpace(query)
 }
 
 func (s *DALLEGeneratorSource) FindByName(ctx context.Context, name string) (*entity.ProductData, error) {

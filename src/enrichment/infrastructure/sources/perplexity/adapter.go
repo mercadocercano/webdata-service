@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/entity"
@@ -49,6 +50,22 @@ func (s *PerplexityGTINSource) SourceName() entity.Source {
 
 func (s *PerplexityGTINSource) FindByGTIN(_ context.Context, _ string) (*entity.ProductData, error) {
 	return nil, nil
+}
+
+func (s *PerplexityGTINSource) FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error) {
+	query := buildContextualQuery(name, category, businessType)
+	return s.FindByName(ctx, query)
+}
+
+func buildContextualQuery(name, category, businessType string) string {
+	query := name
+	if category != "" {
+		query += " " + category
+	}
+	if businessType != "" {
+		query += " " + businessType
+	}
+	return strings.TrimSpace(query)
 }
 
 func (s *PerplexityGTINSource) FindByName(ctx context.Context, name string) (*entity.ProductData, error) {

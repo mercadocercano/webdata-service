@@ -66,6 +66,22 @@ func (a *OFFAdapter) FindByGTIN(ctx context.Context, gtin string) (*entity.Produ
 	return parseOFFProductResponse(resp.Body)
 }
 
+func (a *OFFAdapter) FindByNameWithContext(ctx context.Context, name, category, businessType string) (*entity.ProductData, error) {
+	query := buildContextualQuery(name, category, businessType)
+	return a.FindByName(ctx, query)
+}
+
+func buildContextualQuery(name, category, businessType string) string {
+	query := name
+	if category != "" {
+		query += " " + category
+	}
+	if businessType != "" {
+		query += " " + businessType
+	}
+	return strings.TrimSpace(query)
+}
+
 func (a *OFFAdapter) FindByName(ctx context.Context, name string) (*entity.ProductData, error) {
 	if name == "" {
 		return nil, nil

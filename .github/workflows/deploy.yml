@@ -1,0 +1,170 @@
+name: Deploy webdata-service to Production
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: registry.digitalocean.com/mc-bootstrap-registry
+  IMAGE_NAME: webdata-service
+  DEPLOYMENT_NAME: webdata-service
+  CONTAINER_NAME: webdata
+  NAMESPACE: default
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DigitalOcean Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.digitalocean.com
+          username: ${{ secrets.DOCR_TOKEN }}
+          password: ${{ secrets.DOCR_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Configure private modules
+        run: git config --global url."https://${{ secrets.GO_PRIVATE_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Run tests
+        run: go test ./... -race -timeout 120s
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Build and Push production image (linux/amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          target: production
+          provenance: false
+          sbom: false
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.GO_PRIVATE_TOKEN }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Build and Push migrate image (linux/amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          target: migrate
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }}
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          if echo "$SSH_PRIVATE_KEY" | grep -q '^-----BEGIN'; then
+            echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          else
+            echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/deploy_key
+          fi
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DROPLET_IP >> ~/.ssh/known_hosts 2>/dev/null || true
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          DROPLET_IP: ${{ secrets.DROPLET_IP }}
+
+      - name: Run migrate job
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no deploy@${{ secrets.DROPLET_IP }} \
+            "export KUBECONFIG=/home/deploy/.kube/config && \
+             kubectl delete job webdata-migrate --ignore-not-found && \
+             kubectl run webdata-migrate-${{ github.sha }} \
+               --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }} \
+               --restart=Never \
+               --overrides='{
+                 \"spec\": {
+                   \"imagePullSecrets\": [{\"name\": \"do-registry\"}],
+                   \"containers\": [{
+                     \"name\": \"webdata-migrate\",
+                     \"image\": \"${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }}\",
+                     \"imagePullPolicy\": \"Always\",
+                     \"command\": [\"sh\",\"-c\",\"for f in \$(ls /app/migrations/*.up.sql | sort); do echo Applying \$f && PGPASSWORD=postgres psql -h postgres -p 5432 -U postgres -d webdata_db -f \\\"\$f\\\" || exit 1; done && echo Done\"],
+                     \"env\": [
+                       {\"name\":\"POSTGRES_HOST\",\"value\":\"postgres\"},
+                       {\"name\":\"POSTGRES_PORT\",\"value\":\"5432\"},
+                       {\"name\":\"POSTGRES_USER\",\"value\":\"postgres\"},
+                       {\"name\":\"POSTGRES_PASSWORD\",\"value\":\"postgres\"},
+                       {\"name\":\"POSTGRES_DB\",\"value\":\"webdata_db\"}
+                     ]
+                   }]
+                 }
+               }' && \
+             kubectl wait pod/webdata-migrate-${{ github.sha }} \
+               --for=condition=Ready --timeout=30s 2>/dev/null || true && \
+             kubectl wait pod/webdata-migrate-${{ github.sha }} \
+               --for=jsonpath=.status.phase=Succeeded --timeout=120s || \
+             (kubectl logs webdata-migrate-${{ github.sha }} 2>/dev/null; exit 1)"
+
+      - name: Deploy to K8s with rollback
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no deploy@${{ secrets.DROPLET_IP }} \
+            "export KUBECONFIG=/home/deploy/.kube/config && \
+             kubectl set image deployment/${{ env.DEPLOYMENT_NAME }} \
+               ${{ env.CONTAINER_NAME }}=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+               -n ${{ env.NAMESPACE }} && \
+             kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} \
+               -n ${{ env.NAMESPACE }} --timeout=180s || \
+             (kubectl rollout undo deployment/${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} && \
+              echo 'Rollback triggered' && exit 1)"
+
+      - name: Verify Pod Ready
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no deploy@${{ secrets.DROPLET_IP }} \
+            "export KUBECONFIG=/home/deploy/.kube/config && \
+             READY=\$(kubectl get pods -l app=webdata-service -o jsonpath='{.items[0].status.containerStatuses[0].ready}') && \
+             IMAGE=\$(kubectl get pods -l app=webdata-service -o jsonpath='{.items[0].spec.containers[0].image}') && \
+             echo \"Pod ready: \$READY\" && echo \"Image: \$IMAGE\" && \
+             [ \"\$READY\" = 'true' ] || (echo 'Pod not ready'; exit 1) && \
+             echo 'webdata-service is running and healthy'"
+
+      - name: Collect diagnostics and notify Telegram on failure
+        if: failure()
+        run: |
+          DIAG="SSH unavailable (pre-deploy failure)"
+          if [ -f ~/.ssh/deploy_key ]; then
+            DIAG=$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+              deploy@${{ secrets.DROPLET_IP }} \
+              'export KUBECONFIG=/home/deploy/.kube/config && \
+               echo "=== Pod Status ===" && \
+               kubectl get pods -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} 2>/dev/null | tail -5 && \
+               echo "=== Events ===" && \
+               kubectl describe pod -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} 2>/dev/null | grep -A8 "Events:" | tail -10 && \
+               echo "=== Logs ===" && \
+               (kubectl logs -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} --previous --tail=20 2>/dev/null || \
+                kubectl logs -l app=${{ env.DEPLOYMENT_NAME }} -n ${{ env.NAMESPACE }} --tail=20 2>/dev/null || \
+                echo "no logs")' \
+              2>/dev/null | head -c 2800) || DIAG="SSH failed"
+          fi
+          MSG=$(printf 'FAILED: ${{ env.IMAGE_NAME }}\nCommit: ${{ github.sha }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n%s' "$DIAG")
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode text="$MSG"
+
+      - name: Notify Telegram on success
+        if: success()
+        run: |
+          MSG=$(printf 'DEPLOYED: ${{ env.IMAGE_NAME }}\nCommit: ${{ github.sha }}')
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            --data-urlencode text="$MSG"

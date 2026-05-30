@@ -99,7 +99,7 @@ jobs:
                      \"name\": \"webdata-migrate\",
                      \"image\": \"${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }}\",
                      \"imagePullPolicy\": \"Always\",
-                     \"command\": [\"sh\",\"-c\",\"for f in \$(ls /app/migrations/*.up.sql | sort); do echo Applying \$f && PGPASSWORD=postgres psql -h postgres -p 5432 -U postgres -d webdata_db -f \\\"\$f\\\" || exit 1; done && echo Done\"],
+                     \"command\": [\"sh\",\"-c\",\"for f in \$(ls /app/migrations/*.up.sql | sort); do echo Applying \$f && PGPASSWORD=postgres psql -h postgres -p 5432 -U postgres -d webdata_db -f \\"\$f\\" || exit 1; done && echo Done\"],
                      \"env\": [
                        {\"name\":\"POSTGRES_HOST\",\"value\":\"postgres\"},
                        {\"name\":\"POSTGRES_PORT\",\"value\":\"5432\"},
@@ -168,3 +168,32 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
             --data-urlencode text="$MSG"
+
+      - name: Notify Langfuse on deploy
+        if: always()
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+        run: |
+          [ -z "$LANGFUSE_PUBLIC_KEY" ] && exit 0
+          STATUS="${{ job.status }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TRACE_ID="ci-${{ env.IMAGE_NAME }}-${{ github.sha }}"
+          curl -s -X POST "$LANGFUSE_BASE_URL/api/public/traces" \
+            -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"id\": \"$TRACE_ID\",
+              \"name\": \"ci:deploy\",
+              \"timestamp\": \"$TIMESTAMP\",
+              \"input\": \"${{ github.sha }}\",
+              \"metadata\": {
+                \"service\": \"${{ env.IMAGE_NAME }}\",
+                \"sha\": \"${{ github.sha }}\",
+                \"run_id\": \"${{ github.run_id }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"status\": \"$STATUS\"
+              },
+              \"tags\": [\"ci\", \"deploy\", \"service:${{ env.IMAGE_NAME }}\", \"status:$STATUS\"]
+            }" > /dev/null || true

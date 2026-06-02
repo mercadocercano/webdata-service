@@ -27,27 +27,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o webdata-service ./cmd/api/main.go
 
 # Stage 3: Development (with Air hot reload)
-FROM golang:1.24-alpine AS development
-
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -S -D -h /app -s /bin/sh -G appgroup -u 1001 appuser
-
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    curl \
-    postgresql-client \
-    git \
-    && cp /usr/share/zoneinfo/UTC /etc/localtime \
-    && echo "UTC" > /etc/timezone \
-    && apk del tzdata
-
-RUN go install github.com/cosmtrek/air@v1.49.0
+FROM mercado-cercano/go-dev:1.24 AS development
 
 WORKDIR /app
 
 ARG GITHUB_TOKEN
-ENV GOPRIVATE=github.com/mercadocercano/*
 RUN if [ -n "$GITHUB_TOKEN" ]; then git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; fi
 
 COPY --chown=appuser:appgroup go.mod go.sum ./

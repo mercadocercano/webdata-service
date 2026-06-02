@@ -66,9 +66,9 @@ type NeedsEnrichmentResult struct {
 }
 
 type UpdateProductRequest struct {
-	GTIN     string `json:"gtin,omitempty"`
-	EANCode  string `json:"ean_code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
-	Brand    string `json:"brand,omitempty"`
-	Category string `json:"category,omitempty"`
+	GTIN     string  `json:"gtin,omitempty"`
+	EANCode  string  `json:"ean_code,omitempty"`
+	ImageURL *string `json:"image_url,omitempty"`
+	Brand    string  `json:"brand,omitempty"`
+	Category string  `json:"category,omitempty"`
 }

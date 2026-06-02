@@ -198,7 +198,8 @@ func TestRunEnrichmentBatch_MLHit_UploadsAndUpdatesPIM(t *testing.T) {
 	assert.Equal(t, 1, len(repo.saved))
 	assert.Equal(t, "7790895000430", repo.saved[0].EAN)
 	assert.Equal(t, entity.SourceML, repo.saved[0].Source)
-	assert.NotEmpty(t, pim.updated["prod-1"].ImageURL)
+	assert.NotNil(t, pim.updated["prod-1"].ImageURL)
+	assert.NotEmpty(t, *pim.updated["prod-1"].ImageURL)
 }
 
 func TestRunEnrichmentBatch_MLFail_OFFFallback(t *testing.T) {

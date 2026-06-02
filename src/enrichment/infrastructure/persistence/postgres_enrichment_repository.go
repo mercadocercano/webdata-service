@@ -23,7 +23,7 @@ func (r *PostgresEnrichmentRepository) IsResolved(ctx context.Context, productID
 	var count int
 	err := r.db.QueryRowContext(
 		ctx,
-		"SELECT COUNT(*) FROM product_image_resolutions WHERE product_id = $1",
+		"SELECT COUNT(*) FROM product_image_resolutions WHERE product_id = $1 AND raw_url != ''",
 		productID,
 	).Scan(&count)
 	if err != nil {

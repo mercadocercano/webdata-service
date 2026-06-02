@@ -206,7 +206,8 @@ func (uc *RunEnrichmentBatchUseCase) findProductData(ctx context.Context, item p
 	for _, src := range uc.sources {
 		data, err := uc.fetchFromSource(ctx, src, item)
 		if err != nil {
-			return nil, fmt.Errorf("source %s error: %w", src.SourceName(), err)
+			// Source failed — try next source instead of aborting
+			continue
 		}
 		if data == nil || data.ImageURL == "" {
 			continue
@@ -259,7 +260,7 @@ func (uc *RunEnrichmentBatchUseCase) enhance(ctx context.Context, data *entity.P
 
 func (uc *RunEnrichmentBatchUseCase) updatePIM(ctx context.Context, item port.NeedsEnrichmentItem, data *entity.ProductData, cdnURL string) error {
 	req := port.UpdateProductRequest{
-		ImageURL: cdnURL,
+		ImageURL: &cdnURL,
 	}
 	if data.GTIN != "" {
 		req.GTIN = data.GTIN

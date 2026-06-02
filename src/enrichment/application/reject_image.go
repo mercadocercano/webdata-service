@@ -39,7 +39,8 @@ func (uc *RejectImageUseCase) Execute(ctx context.Context, req RejectImageReques
 		return nil, fmt.Errorf("rechazando imagen: %w", err)
 	}
 
-	if err := uc.pim.UpdateProduct(ctx, req.ProductID, port.UpdateProductRequest{ImageURL: ""}); err != nil {
+	empty := ""
+	if err := uc.pim.UpdateProduct(ctx, req.ProductID, port.UpdateProductRequest{ImageURL: &empty}); err != nil {
 		return nil, fmt.Errorf("limpiando imagen en PIM: %w", err)
 	}
 

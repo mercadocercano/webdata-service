@@ -33,6 +33,8 @@ tags:
     description: Proxy a pim-service para listar business types
   - name: Stats
     description: Estadisticas del pipeline y salud de fuentes
+  - name: Enrichment
+    description: Enrichment de productos con imagenes y atributos via IA
 
 paths:
   /health:
@@ -729,6 +731,85 @@ paths:
                     $ref: "#/components/schemas/PipelineStatusResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ── Enrichment ───────────────────────────────────────────
+
+  /api/v1/enrichment/run:
+    post:
+      operationId: runEnrichmentBatch
+      summary: Ejecutar batch de enrichment
+      description: Lanza el proceso de enrichment (imagen + atributos) sobre el lote de productos pendientes del tenant
+      tags: [Enrichment]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Resultado del enrichment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichmentResultResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          description: Use case de enrichment no inicializado o error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/enrichment/status:
+    get:
+      operationId: getEnrichmentStatus
+      summary: Obtener estado del enrichment
+      description: Retorna estadisticas del pipeline de enrichment para el tenant (productos pendientes, procesados, fallidos)
+      tags: [Enrichment]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      responses:
+        "200":
+          description: Estado del enrichment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichmentStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/enrichment/reject:
+    post:
+      operationId: rejectEnrichmentImage
+      summary: Rechazar imagen de enrichment
+      description: Marca una imagen enriquecida como rechazada para que sea descartada o reprocesada
+      tags: [Enrichment]
+      parameters:
+        - $ref: "#/components/parameters/XTenantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id]
+              properties:
+                product_id:
+                  type: string
+                  format: uuid
+                  description: ID del producto cuya imagen se rechaza
+                reason:
+                  type: string
+                  description: Motivo del rechazo
+      responses:
+        "200":
+          description: Imagen rechazada exitosamente
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1463,3 +1544,45 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    EnrichmentResultResponse:
+      type: object
+      properties:
+        processed:
+          type: integer
+          description: Productos procesados en el batch
+        succeeded:
+          type: integer
+          description: Enrichments exitosos
+        failed:
+          type: integer
+          description: Enrichments fallidos
+        skipped:
+          type: integer
+          description: Productos omitidos (sin imagen candidata)
+        errors:
+          type: array
+          items:
+            type: string
+          description: Lista de errores por producto
+
+    EnrichmentStatusResponse:
+      type: object
+      properties:
+        pending:
+          type: integer
+          description: Productos pendientes de enrichment
+        processing:
+          type: integer
+          description: Productos en proceso de enrichment
+        enriched:
+          type: integer
+          description: Productos enriquecidos exitosamente
+        failed:
+          type: integer
+          description: Productos con enrichment fallido
+        last_batch_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp del ultimo batch ejecutado

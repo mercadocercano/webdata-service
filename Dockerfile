@@ -3,7 +3,7 @@
 # ==============================================
 
 # Stage 1: Dependencies
-FROM golang:1.24-alpine AS deps
+FROM golang:1.25-alpine AS deps
 WORKDIR /app
 
 RUN apk add --no-cache git ca-certificates tzdata

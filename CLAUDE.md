@@ -49,3 +49,19 @@ Ver migrations/ para el schema exacto.
 - `scrape`: para páginas simples estáticas
 - `crawl`: para catálogos paginados
 - Rate limiting + retry interno en FirecrawlAdapter
+
+## Memoria persistente (Engram)
+
+Tenés acceso a memoria persistente entre sesiones vía las herramientas MCP de Engram (`mem_save`, `mem_search`, `mem_context`, etc.). Proyecto: **`mercado-cercano`** — la memoria es compartida con el resto del ecosistema (IAM, PIM).
+
+**Cuándo guardar** — sin esperar que te lo pidan:
+- Al resolver un bug no trivial: síntoma, causa raíz, fix aplicado.
+- Al tomar una decisión de diseño: qué se decidió y por qué.
+- Al descubrir un patrón o convención del proyecto que no está documentada.
+- Al completar una feature o refactor significativo: qué cambió y dónde.
+
+**Cuándo buscar** — antes de empezar cualquier tarea:
+- `mem_context` al inicio de sesión o tras una compaction para recuperar el estado anterior.
+- `mem_search` cuando el usuario menciona algo que puede tener historial ("el bug de scraping", "la migración de la semana pasada").
+
+**Al cerrar sesión**: llamar `mem_session_summary` para dejar un resumen recuperable.

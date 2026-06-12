@@ -27,3 +27,7 @@ tmp/main
 .vscode/
 
 .env
+
+# Engram
+.engram/engram.db
+.engram/*.db-*

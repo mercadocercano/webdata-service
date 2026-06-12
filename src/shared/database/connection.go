@@ -2,10 +2,9 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/hornosg/go-shared/infrastructure/postgres"
 )
 
 const (
@@ -15,27 +14,26 @@ const (
 	connMaxIdleTime = 2 * time.Minute
 )
 
-func NewPostgresDB(connStr string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", connStr)
+// NewPostgresDB opens and verifies a Postgres connection using the shared
+// go-shared postgres helper, preserving webdata-service's pool tuning.
+func NewPostgresDB(host, port, user, pass, dbName string) (*sql.DB, error) {
+	db, err := postgres.Connect(postgres.Config{
+		Host:            host,
+		Port:            port,
+		User:            user,
+		Password:        pass,
+		DBName:          dbName,
+		SSLMode:         "disable",
+		MaxOpenConns:    maxOpenConns,
+		MaxIdleConns:    maxIdleConns,
+		ConnMaxLifetime: connMaxLifetime,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("opening postgres connection: %w", err)
+		return nil, err
 	}
 
-	db.SetMaxOpenConns(maxOpenConns)
-	db.SetMaxIdleConns(maxIdleConns)
-	db.SetConnMaxLifetime(connMaxLifetime)
+	// postgres.Config does not expose ConnMaxIdleTime; preserve it here.
 	db.SetConnMaxIdleTime(connMaxIdleTime)
 
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("pinging postgres: %w", err)
-	}
-
 	return db, nil
-}
-
-func BuildConnString(host, port, user, pass, dbName string) string {
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, pass, dbName,
-	)
 }

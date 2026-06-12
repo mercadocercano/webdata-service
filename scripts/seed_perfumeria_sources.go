@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/hornosg/go-shared/infrastructure/postgres"
 )
 
 type sourceRow struct {
@@ -162,26 +162,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnv("DB_HOST", "localhost"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASSWORD", "postgres"),
-		getEnv("DB_NAME", "webdata"),
-	)
-
-	db, err := sql.Open("postgres", connStr)
+	db, err := postgres.Connect(postgres.Config{
+		Host:     getEnv("DB_HOST", "localhost"),
+		Port:     getEnv("DB_PORT", "5432"),
+		User:     getEnv("DB_USER", "postgres"),
+		Password: getEnv("DB_PASSWORD", "postgres"),
+		DBName:   getEnv("DB_NAME", "webdata"),
+		SSLMode:  "disable",
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open DB: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to ping DB: %v\n", err)
-		os.Exit(1)
-	}
 
 	fmt.Printf("Seeding %d perfumería sources for tenant %s...\n", len(perfumeriaSources), tenantID)
 

@@ -19,6 +19,8 @@ import (
 	"github.com/mercadocercano/webdata-service/src/shared/database"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
+
+	"github.com/hornosg/go-shared/infrastructure/postgres"
 )
 
 func main() {
@@ -35,13 +37,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	connStr := database.BuildConnString(dbHost, dbPort, dbUser, dbPass, dbName)
-	db, err := database.NewPostgresDB(connStr)
+	db, err := database.NewPostgresDB(dbHost, dbPort, dbUser, dbPass, dbName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "database connection failed: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	postgres.StartPoolMonitor(context.Background(), db, postgres.MonitorOptions{
+		Service: "webdata-service",
+		DBName:  dbName,
+	})
 
 	// DI wiring
 	productModule := productconfig.NewProductModule(db)

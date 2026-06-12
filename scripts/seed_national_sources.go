@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/hornosg/go-shared/infrastructure/postgres"
 )
 
 type sourceRow struct {
@@ -31,43 +31,43 @@ type sourceRow struct {
 var nationalSources = []sourceRow{
 	// ── Tier 1 — Scraping semanal ──────────────────────────────────────────
 	{
-		name:            "Blaisten",
-		baseURL:         "https://www.blaisten.com/sanitarios?page=2",
-		category:        "ferreteria_construccion",
-		sourceType:      "ecommerce",
-		city:            "Nacional",
-		priority:        "medium",
-		tier:            1,
-		firecrawlMethod: "extract",
-		cronExpression:  "0 6 * * 1", // lunes 06:00
-		notes:           "VTEX store, extracción directa sin config especial. Paginación por query param ?page=N",
+		name:             "Blaisten",
+		baseURL:          "https://www.blaisten.com/sanitarios?page=2",
+		category:         "ferreteria_construccion",
+		sourceType:       "ecommerce",
+		city:             "Nacional",
+		priority:         "medium",
+		tier:             1,
+		firecrawlMethod:  "extract",
+		cronExpression:   "0 6 * * 1", // lunes 06:00
+		notes:            "VTEX store, extracción directa sin config especial. Paginación por query param ?page=N",
 		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"}}}}}}`,
 	},
 	// ── Tier 2 — Scraping semanal, mayor complejidad ───────────────────────
 	{
-		name:            "Frávega",
-		baseURL:         "https://www.fravega.com/electrodomesticos/",
-		category:        "electronica",
-		sourceType:      "ecommerce",
-		city:            "Nacional",
-		priority:        "medium",
-		tier:            2,
-		firecrawlMethod: "extract",
-		cronExpression:  "0 6 * * 1", // lunes 06:00
-		notes:           "SPA pesado, requiere waitFor >= 10000 y acciones de scroll. 9+ créditos por extract.",
+		name:             "Frávega",
+		baseURL:          "https://www.fravega.com/electrodomesticos/",
+		category:         "electronica",
+		sourceType:       "ecommerce",
+		city:             "Nacional",
+		priority:         "medium",
+		tier:             2,
+		firecrawlMethod:  "extract",
+		cronExpression:   "0 6 * * 1", // lunes 06:00
+		notes:            "SPA pesado, requiere waitFor >= 10000 y acciones de scroll. 9+ créditos por extract.",
 		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"installments":{"type":"string"}}}}}}`,
 	},
 	{
-		name:            "Dexter",
-		baseURL:         "https://www.dexter.com.ar/zapatillas",
-		category:        "indumentaria",
-		sourceType:      "ecommerce",
-		city:            "Nacional",
-		priority:        "medium",
-		tier:            2,
-		firecrawlMethod: "extract",
-		cronExpression:  "0 6 * * 1", // lunes 06:00
-		notes:           "Salesforce Commerce Cloud. URLs complejas con pipes funcionan bien. Proxy stealth (9 créditos).",
+		name:             "Dexter",
+		baseURL:          "https://www.dexter.com.ar/zapatillas",
+		category:         "indumentaria",
+		sourceType:       "ecommerce",
+		city:             "Nacional",
+		priority:         "medium",
+		tier:             2,
+		firecrawlMethod:  "extract",
+		cronExpression:   "0 6 * * 1", // lunes 06:00
+		notes:            "Salesforce Commerce Cloud. URLs complejas con pipes funcionan bien. Proxy stealth (9 créditos).",
 		extractionSchema: `{"type":"object","properties":{"products":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"price":{"type":"number"},"image_url":{"type":"string"},"url":{"type":"string"},"brand":{"type":"string"},"category":{"type":"string"},"description":{"type":"string"},"sku":{"type":"string"}}}}}}`,
 	},
 }
@@ -85,26 +85,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnv("DB_HOST", "localhost"),
-		getEnv("DB_PORT", "5432"),
-		getEnv("DB_USER", "postgres"),
-		getEnv("DB_PASSWORD", "postgres"),
-		getEnv("DB_NAME", "webdata"),
-	)
-
-	db, err := sql.Open("postgres", connStr)
+	db, err := postgres.Connect(postgres.Config{
+		Host:     getEnv("DB_HOST", "localhost"),
+		Port:     getEnv("DB_PORT", "5432"),
+		User:     getEnv("DB_USER", "postgres"),
+		Password: getEnv("DB_PASSWORD", "postgres"),
+		DBName:   getEnv("DB_NAME", "webdata"),
+		SSLMode:  "disable",
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to open DB: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to ping DB: %v\n", err)
-		os.Exit(1)
-	}
 
 	fmt.Printf("Seeding %d national sources for tenant %s...\n", len(nationalSources), tenantID)
 

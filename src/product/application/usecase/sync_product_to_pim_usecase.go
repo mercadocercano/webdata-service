@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
+	"github.com/mercadocercano/webdata-service/src/product/domain/value_object"
 )
 
 type SyncProductToPIMUseCase struct {
@@ -37,7 +38,7 @@ func (uc *SyncProductToPIMUseCase) Execute(ctx context.Context, product *entity.
 }
 
 func (uc *SyncProductToPIMUseCase) findExisting(ctx context.Context, product *entity.ScrapedProduct) (*port.PIMGlobalProduct, error) {
-	if product.EAN != "" {
+	if value_object.IsValidEAN13(product.EAN) {
 		found, err := uc.syncer.SearchByEAN(ctx, product.TenantID, product.EAN)
 		if err != nil {
 			return nil, err
@@ -69,7 +70,7 @@ func (uc *SyncProductToPIMUseCase) createNew(ctx context.Context, product *entit
 	bt := primaryBusinessType(product)
 
 	req := port.CreatePIMProductRequest{
-		EAN:          product.EAN,
+		EAN:          value_object.NormalizeEANForSync(product.EAN),
 		Name:         product.Title,
 		Brand:        product.Brand,
 		Category:     product.Category,

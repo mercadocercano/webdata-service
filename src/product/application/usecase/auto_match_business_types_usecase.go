@@ -41,61 +41,83 @@ type AutoMatchResult struct {
 }
 
 // categoryMapping maps normalized categories to business type keywords for matching.
+// These keywords are matched against bt.Code and bt.Name to produce proposals.
+// Rules:
+//   - Only valid business type codes from the canonical map are used as keywords
+//     (almacen, fiambreria, limpieza, kiosco, farmacia, perfumeria, supermercado,
+//     bazar, ferreteria, electrodomesticos, ropa).
+//   - No invalid codes: supermercado/autoservicio/vinoteca/carniceria/granja/
+//     fruteria/pescaderia/dietetica/veterinaria/pet shop are removed.
+//   - Taxonomía del owner: lácteos/leches/yogures/quesos → fiambreria (primer candidato).
 var categoryMapping = map[string][]string{
-	"aceites":              {"almacen", "supermercado", "autoservicio"},
-	"arroz":                {"almacen", "supermercado", "autoservicio"},
-	"fideos":               {"almacen", "supermercado", "autoservicio"},
-	"harinas":              {"almacen", "supermercado", "autoservicio"},
-	"azucar":               {"almacen", "supermercado", "autoservicio"},
-	"sal":                  {"almacen", "supermercado", "autoservicio"},
-	"conservas":            {"almacen", "supermercado", "autoservicio"},
-	"salsas":               {"almacen", "supermercado", "autoservicio"},
-	"condimentos":          {"almacen", "supermercado", "autoservicio"},
-	"especias":             {"almacen", "supermercado", "autoservicio"},
-	"snacks":               {"almacen", "supermercado", "kiosco"},
-	"galletitas":           {"almacen", "supermercado", "kiosco"},
-	"golosinas":            {"kiosco", "almacen", "supermercado"},
-	"chocolates":           {"kiosco", "almacen", "supermercado"},
-	"bebidas":              {"almacen", "supermercado", "autoservicio"},
-	"gaseosas":             {"almacen", "supermercado", "kiosco"},
-	"aguas":                {"almacen", "supermercado", "kiosco"},
-	"jugos":                {"almacen", "supermercado", "kiosco"},
-	"cervezas":             {"almacen", "supermercado", "vinoteca"},
-	"vinos":                {"vinoteca", "supermercado", "almacen"},
-	"lacteos":              {"supermercado", "almacen", "autoservicio"},
-	"leches":               {"supermercado", "almacen", "autoservicio"},
-	"yogures":              {"supermercado", "autoservicio"},
-	"quesos":               {"supermercado", "fiambreria", "almacen"},
-	"fiambres":             {"fiambreria", "supermercado", "almacen"},
-	"carnes":               {"carniceria", "supermercado"},
-	"pollo":                {"carniceria", "supermercado", "granja"},
-	"pescados":             {"pescaderia", "supermercado"},
-	"frutas":               {"verduleria", "supermercado", "fruteria"},
-	"verduras":             {"verduleria", "supermercado"},
-	"panaderia":            {"panaderia", "supermercado"},
-	"panificados":          {"panaderia", "supermercado", "almacen"},
-	"congelados":           {"supermercado", "autoservicio"},
-	"limpieza":             {"supermercado", "almacen", "autoservicio"},
-	"higiene":              {"farmacia", "supermercado", "perfumeria"},
-	"perfumeria":           {"perfumeria", "farmacia", "supermercado"},
-	"cuidado personal":     {"farmacia", "perfumeria", "supermercado"},
-	"bebes":                {"farmacia", "supermercado"},
-	"mascotas":             {"veterinaria", "supermercado", "pet shop"},
-	"almacen":              {"almacen", "supermercado", "autoservicio"},
-	"cereales":             {"almacen", "supermercado", "dietetica"},
-	"legumbres":            {"almacen", "supermercado", "dietetica"},
-	"pastas":               {"almacen", "supermercado", "autoservicio"},
-	"cafe":                 {"almacen", "supermercado", "autoservicio"},
-	"te":                   {"almacen", "supermercado", "autoservicio"},
-	"yerba":                {"almacen", "supermercado", "autoservicio"},
-	"infusiones":           {"almacen", "supermercado", "autoservicio"},
-	"dulces":               {"almacen", "supermercado", "autoservicio"},
-	"mermeladas":           {"almacen", "supermercado", "autoservicio"},
-	"productos de limpieza": {"supermercado", "almacen", "autoservicio"},
-	"electronica":           {"electronica"},
-	"tecnologia":            {"electronica"},
-	"electro":               {"electronica"},
-	"cosmeticos":            {"farmacia", "perfumeria"},
+	// Almacén de Barrio — alimentos secos, bebidas, consumo masivo
+	"aceites":               {"almacen"},
+	"arroz":                 {"almacen"},
+	"fideos":                {"almacen"},
+	"harinas":               {"almacen"},
+	"azucar":                {"almacen"},
+	"sal":                   {"almacen"},
+	"conservas":             {"almacen"},
+	"salsas":                {"almacen"},
+	"condimentos":           {"almacen"},
+	"especias":              {"almacen"},
+	"snacks":                {"almacen", "kiosco"},
+	"galletitas":            {"almacen", "kiosco"},
+	"golosinas":             {"almacen", "kiosco"},
+	"chocolates":            {"almacen", "kiosco"},
+	"bebidas":               {"almacen"},
+	"gaseosas":              {"almacen", "kiosco"},
+	"aguas":                 {"almacen", "kiosco"},
+	"jugos":                 {"almacen"},
+	"cervezas":              {"almacen"},
+	"vinos":                 {"almacen"},
+	"congelados":            {"almacen"},
+	"panaderia":             {"almacen"},
+	"panificados":           {"almacen"},
+	"cereales":              {"almacen"},
+	"legumbres":             {"almacen"},
+	"pastas":                {"almacen"},
+	"cafe":                  {"almacen"},
+	"te":                    {"almacen"},
+	"yerba":                 {"almacen"},
+	"infusiones":            {"almacen"},
+	"dulces":                {"almacen"},
+	"mermeladas":            {"almacen"},
+	"almacen":               {"almacen"},
+
+	// Fiambrería — taxonomía del owner: lácteos y sus derivados → fiambreria
+	"lacteos":               {"fiambreria", "almacen"},
+	"leches":                {"fiambreria", "almacen"},
+	"yogures":               {"fiambreria"},
+	"quesos":                {"fiambreria"},
+	"fiambres":              {"fiambreria"},
+
+	// Carnes, frutas, verduras — no tienen business type propio en el catálogo válido;
+	// se propone almacen como mejor alternativa disponible.
+	"carnes":                {"almacen"},
+	"pollo":                 {"almacen"},
+	"pescados":              {"almacen"},
+	"frutas":                {"almacen"},
+	"verduras":              {"almacen"},
+	"mascotas":              {"almacen"},
+
+	// Limpieza
+	"limpieza":              {"limpieza"},
+	"productos de limpieza": {"limpieza"},
+
+	// Higiene / Perfumería / Cuidado personal
+	"higiene":               {"perfumeria", "farmacia"},
+	"perfumeria":            {"perfumeria", "farmacia"},
+	"cuidado personal":      {"perfumeria", "farmacia"},
+	"cosmeticos":            {"perfumeria", "farmacia"},
+
+	// Farmacia
+	"bebes":                 {"farmacia"},
+
+	// Electrodomésticos
+	"electronica":           {"electrodomesticos"},
+	"tecnologia":            {"electrodomesticos"},
+	"electro":               {"electrodomesticos"},
 }
 
 type AutoMatchBusinessTypesUseCase struct {

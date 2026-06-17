@@ -512,6 +512,146 @@ func TestUpsertProductsUseCase_SourceNotFound_SkipsGracefully(t *testing.T) {
 	}
 }
 
+// --- T-PRD-E17: Per-product business type resolution ---
+
+// TestUpsertProductsUseCase_PerProductCategory_MixedBatch verifica que un batch con
+// categorías distintas por producto reciba business_types distintos, sin que el
+// autoAssignment de fuente (supermercado→almacen) sobrescriba al resolver per-producto.
+func TestUpsertProductsUseCase_PerProductCategory_MixedBatch(t *testing.T) {
+	// Arrange — fuente con category supermercado → almacen por defecto
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "supermercado"
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 50.0
+	raw := []scrapeport.RawProduct{
+		// Producto con categoría de path estilo Átomo — debe ir a fiambreria
+		{
+			Title:    "Yogur Natural 180g",
+			URL:      "https://example.com/yogur",
+			Price:    &price,
+			Category: "/Lácteos/Yogures/Yogur en vasos/",
+		},
+		// Producto con categoría LIMPIEZA en mayúsculas — debe ir a limpieza
+		{
+			Title:    "Lavandina 2L",
+			URL:      "https://example.com/lavandina",
+			Price:    &price,
+			Category: "LIMPIEZA",
+		},
+		// Producto con categoría genérica que no mapea per-producto — debe usar fallback (almacen)
+		{
+			Title:    "Aceite de Oliva 500ml",
+			URL:      "https://example.com/aceite",
+			Price:    &price,
+			Category: "Aceites",
+		},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 3, saved)
+
+	// Recolectamos por título para verificar independientemente del orden de iteración
+	byTitle := make(map[string]*entity.ScrapedProduct)
+	for _, p := range repo.products {
+		byTitle[p.Title] = p
+	}
+
+	// Yogur → fiambreria (per-product resolver gana sobre fallback supermercado→almacen)
+	yogur := byTitle["Yogur Natural 180g"]
+	require.NotNil(t, yogur)
+	require.Len(t, yogur.BusinessTypes, 1)
+	assert.Equal(t, "fiambreria", yogur.BusinessTypes[0].BusinessTypeCode,
+		"yogur debe ser fiambreria, no almacen (fuente supermercado)")
+
+	// Lavandina → limpieza
+	lavandina := byTitle["Lavandina 2L"]
+	require.NotNil(t, lavandina)
+	require.Len(t, lavandina.BusinessTypes, 1)
+	assert.Equal(t, "limpieza", lavandina.BusinessTypes[0].BusinessTypeCode)
+
+	// Aceite → almacen (per-product resolver matchea "aceite" → almacen, consistente con fallback)
+	aceite := byTitle["Aceite de Oliva 500ml"]
+	require.NotNil(t, aceite)
+	require.Len(t, aceite.BusinessTypes, 1)
+	assert.Equal(t, "almacen", aceite.BusinessTypes[0].BusinessTypeCode)
+}
+
+// TestUpsertProductsUseCase_PerProductCategory_FallbackWhenNoMatch verifica que cuando
+// la categoría del producto no tiene match en el resolver, se usa el autoAssignment de fuente.
+func TestUpsertProductsUseCase_PerProductCategory_FallbackWhenNoMatch(t *testing.T) {
+	// Arrange — fuente con category lacteos → fiambreria
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "lacteos"
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 30.0
+	raw := []scrapeport.RawProduct{
+		// Categoría completamente desconocida — debe caer en el autoAssignment de fuente (fiambreria)
+		{
+			Title:    "Producto Xyzzy Sin Categoría Conocida",
+			URL:      "https://example.com/xyzzy",
+			Price:    &price,
+			Category: "CategoríaDesconocida99",
+		},
+	}
+
+	// Act
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved)
+
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1, "debe tener el business type del fallback de fuente")
+		assert.Equal(t, "fiambreria", p.BusinessTypes[0].BusinessTypeCode,
+			"fallback de fuente lacteos→fiambreria debe aplicarse cuando el resolver no matchea")
+	}
+}
+
+// TestUpsertProductsUseCase_PerProductCategory_LacteosSingleProduct verifica el caso
+// puntual de E17: producto Átomo con category lácteos va a fiambreria, NO a almacen.
+func TestUpsertProductsUseCase_PerProductCategory_LacteosSingleProduct(t *testing.T) {
+	// Fuente con supermercado (que da almacen) para exagerar el contraste
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "supermercado"
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 80.0
+	raw := []scrapeport.RawProduct{
+		{
+			Title:    "Leche La Serenísima Entera 1L",
+			URL:      "https://example.com/leche",
+			Price:    &price,
+			Category: "Leches Larga Vida",
+		},
+	}
+
+	saved, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+	require.NoError(t, err)
+	assert.Equal(t, 1, saved)
+
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1)
+		assert.Equal(t, "fiambreria", p.BusinessTypes[0].BusinessTypeCode,
+			"leche debe ir a fiambreria aunque la fuente sea supermercado")
+	}
+}
+
 func TestGetPriceHistoryUseCase_ReturnsHistory(t *testing.T) {
 	repo := newMockProductRepo()
 	tenantID := uuid.New()

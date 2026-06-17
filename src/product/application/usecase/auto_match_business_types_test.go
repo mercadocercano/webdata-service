@@ -90,22 +90,23 @@ func TestAutoMatchBusinessTypes_GeneratesProposalsByCategory(t *testing.T) {
 		proposalMap[p.ProductID] = p
 	}
 
-	// Aceites → almacen, supermercado, autoservicio
+	// Aceites → almacen (único candidato válido en el catálogo)
 	aceiteProposal := proposalMap[aceite.ID]
 	assert.NotEmpty(t, aceiteProposal.ProposedBusinessTypes)
 	assert.Equal(t, "almacen", aceiteProposal.ProposedBusinessTypes[0].Code)
 	assert.Contains(t, aceiteProposal.ProposedBusinessTypes[0].MatchReason, "category_match")
 	assert.GreaterOrEqual(t, aceiteProposal.ConfidenceScore, 0.7)
 
-	// Carnes → carniceria, supermercado
+	// Carnes → almacen (carniceria no es un business type válido en el catálogo del owner;
+	// la categoría "carnes" no tiene un tipo propio, se propone almacen como alternativa).
 	carneProposal := proposalMap[carne.ID]
 	assert.NotEmpty(t, carneProposal.ProposedBusinessTypes)
-	assert.Equal(t, "carniceria", carneProposal.ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "almacen", carneProposal.ProposedBusinessTypes[0].Code)
 
-	// Verduras → verduleria, supermercado
+	// Verduras → almacen (verduleria no es un business type válido en el catálogo del owner)
 	verduraProposal := proposalMap[verdura.ID]
 	assert.NotEmpty(t, verduraProposal.ProposedBusinessTypes)
-	assert.Equal(t, "verduleria", verduraProposal.ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "almacen", verduraProposal.ProposedBusinessTypes[0].Code)
 }
 
 // T-007 extension: max 3 business type options per product
@@ -246,7 +247,8 @@ func TestAutoMatchBusinessTypes_FuzzyMatchCategory(t *testing.T) {
 	tenantID := uuid.New()
 	sourceID := uuid.New()
 
-	// NormalizedCategory contains a known key
+	// NormalizedCategory contains a known key; vinos → almacen (vinoteca no es un
+	// business type válido en el catálogo del owner).
 	p := createTestProduct(tenantID, sourceID, "Vino Tinto Malbec", "Vinos Tintos", "vinos")
 	_, _ = repo.Upsert(context.Background(), p)
 
@@ -255,5 +257,5 @@ func TestAutoMatchBusinessTypes_FuzzyMatchCategory(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.MatchedCount)
-	assert.Equal(t, "vinoteca", result.Proposals[0].ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "almacen", result.Proposals[0].ProposedBusinessTypes[0].Code)
 }

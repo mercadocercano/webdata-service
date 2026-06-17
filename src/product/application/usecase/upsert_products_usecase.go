@@ -165,8 +165,19 @@ func (uc *UpsertProductsUseCase) execute(
 
 		if _, upsertErr := uc.repo.Upsert(ctx, product); upsertErr == nil {
 			created++
-			if autoAssignment != nil {
-				assignments := []value_object.BusinessTypeAssignment{*autoAssignment}
+			// Resolve business type per-product from its own category first;
+			// fall back to the source-level autoAssignment when the per-product
+			// resolver finds no match.
+			var assignmentToApply *value_object.BusinessTypeAssignment
+			if perProduct, ok := value_object.ResolveBusinessTypeFromProductCategory(raw.Category); ok {
+				assignmentToApply = &perProduct
+				log.Printf("[upsert] per-product category resolver assigned business_type=%q to product %s (category=%q)",
+					perProduct.BusinessTypeCode, product.ID, raw.Category)
+			} else if autoAssignment != nil {
+				assignmentToApply = autoAssignment
+			}
+			if assignmentToApply != nil {
+				assignments := []value_object.BusinessTypeAssignment{*assignmentToApply}
 				if btErr := uc.repo.SaveBusinessTypes(ctx, tenantID, product.ID, assignments); btErr != nil {
 					fmt.Printf("[upsert] error auto-assigning business type for product %s: %v\n", product.ID, btErr)
 				}

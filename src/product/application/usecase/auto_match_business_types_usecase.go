@@ -43,12 +43,12 @@ type AutoMatchResult struct {
 // categoryMapping maps normalized categories to business type keywords for matching.
 // These keywords are matched against bt.Code and bt.Name to produce proposals.
 // Rules:
-//   - Only valid business type codes from the canonical map are used as keywords
-//     (almacen, fiambreria, limpieza, kiosco, farmacia, perfumeria, supermercado,
-//     bazar, ferreteria, electrodomesticos, ropa).
-//   - No invalid codes: supermercado/autoservicio/vinoteca/carniceria/granja/
-//     fruteria/pescaderia/dietetica/veterinaria/pet shop are removed.
+//   - Only valid business type codes from the canonical 20-code catalog are used:
+//     almacen, bazar, carniceria, electricidad, electrodomesticos, farmacia, ferreteria,
+//     fiambreria, jugueteria, kiosco, libreria, limpieza, panaderia, peluqueria,
+//     perfumeria, piletas, ropa, verduleria, veterinaria, vinoteca.
 //   - Taxonomía del owner: lácteos/leches/yogures/quesos → fiambreria (primer candidato).
+//   - pescados → almacen (no hay pescadería en el catálogo).
 var categoryMapping = map[string][]string{
 	// Almacén de Barrio — alimentos secos, bebidas, consumo masivo
 	"aceites":               {"almacen"},
@@ -70,10 +70,7 @@ var categoryMapping = map[string][]string{
 	"aguas":                 {"almacen", "kiosco"},
 	"jugos":                 {"almacen"},
 	"cervezas":              {"almacen"},
-	"vinos":                 {"almacen"},
 	"congelados":            {"almacen"},
-	"panaderia":             {"almacen"},
-	"panificados":           {"almacen"},
 	"cereales":              {"almacen"},
 	"legumbres":             {"almacen"},
 	"pastas":                {"almacen"},
@@ -84,6 +81,8 @@ var categoryMapping = map[string][]string{
 	"dulces":                {"almacen"},
 	"mermeladas":            {"almacen"},
 	"almacen":               {"almacen"},
+	// pescados → almacen (no hay pescadería en el catálogo de 20 rubros)
+	"pescados":              {"almacen"},
 
 	// Fiambrería — taxonomía del owner: lácteos y sus derivados → fiambreria
 	"lacteos":               {"fiambreria", "almacen"},
@@ -92,14 +91,23 @@ var categoryMapping = map[string][]string{
 	"quesos":                {"fiambreria"},
 	"fiambres":              {"fiambreria"},
 
-	// Carnes, frutas, verduras — no tienen business type propio en el catálogo válido;
-	// se propone almacen como mejor alternativa disponible.
-	"carnes":                {"almacen"},
-	"pollo":                 {"almacen"},
-	"pescados":              {"almacen"},
-	"frutas":                {"almacen"},
-	"verduras":              {"almacen"},
-	"mascotas":              {"almacen"},
+	// Carnicería — frescos
+	"carnes":                {"carniceria", "almacen"},
+	"pollo":                 {"carniceria", "almacen"},
+
+	// Verdulería y Frutería
+	"frutas":                {"verduleria", "almacen"},
+	"verduras":              {"verduleria", "almacen"},
+
+	// Veterinaria y Mascotas
+	"mascotas":              {"veterinaria", "almacen"},
+
+	// Panadería y Cafetería — frescos
+	"panaderia":             {"panaderia", "almacen"},
+	"panificados":           {"panaderia", "almacen"},
+
+	// Vinoteca
+	"vinos":                 {"vinoteca", "almacen"},
 
 	// Limpieza
 	"limpieza":              {"limpieza"},
@@ -118,6 +126,24 @@ var categoryMapping = map[string][]string{
 	"electronica":           {"electrodomesticos"},
 	"tecnologia":            {"electrodomesticos"},
 	"electro":               {"electrodomesticos"},
+
+	// Librería y Papelería
+	"libreria":              {"libreria"},
+	"papeleria":             {"libreria"},
+
+	// Juguetería
+	"jugueteria":            {"jugueteria"},
+	"juguetes":              {"jugueteria"},
+
+	// Peluquería y Estética
+	"peluqueria":            {"peluqueria"},
+
+	// Piletas y Jardín
+	"piletas":               {"piletas"},
+	"jardin":                {"piletas"},
+
+	// Electricidad
+	"electricidad":          {"electricidad"},
 }
 
 type AutoMatchBusinessTypesUseCase struct {

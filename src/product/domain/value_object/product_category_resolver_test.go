@@ -22,19 +22,19 @@ func TestResolveBusinessTypeFromProductCategory_PathCategories(t *testing.T) {
 			name:         "path lacteos yogur",
 			rawCategory:  "/Lácteos/Yogures/Yogur en vasos/",
 			expectedCode: "fiambreria",
-			expectedName: "Fiambrería",
+			expectedName: "Fiambrería y Rotisería",
 		},
 		{
 			name:         "path lacteos leches larga vida",
 			rawCategory:  "Leches Larga Vida",
 			expectedCode: "fiambreria",
-			expectedName: "Fiambrería",
+			expectedName: "Fiambrería y Rotisería",
 		},
 		{
 			name:         "LIMPIEZA en mayusculas",
 			rawCategory:  "LIMPIEZA",
 			expectedCode: "limpieza",
-			expectedName: "Limpieza",
+			expectedName: "Casa de Limpieza",
 		},
 		{
 			name:         "Cafes con acento",
@@ -134,4 +134,89 @@ func TestResolveBusinessTypeFromProductCategory_PathSegmentPriority(t *testing.T
 	assignment2, ok2 := vo.ResolveBusinessTypeFromProductCategory("/Limpieza/Detergentes/")
 	require.True(t, ok2)
 	assert.Equal(t, "limpieza", assignment2.BusinessTypeCode)
+}
+
+// TestResolveBusinessTypeFromProductCategory_NuevosRubros verifica la corrección de los
+// rubros que antes se colapsaban incorrectamente a almacen.
+func TestResolveBusinessTypeFromProductCategory_NuevosRubros(t *testing.T) {
+	cases := []struct {
+		name         string
+		rawCategory  string
+		expectedCode string
+	}{
+		// Vinoteca
+		{name: "vino malbec 750cc", rawCategory: "Vino Malbec 750cc", expectedCode: "vinoteca"},
+		{name: "path vinos tintos", rawCategory: "/Bebidas/Vinos/Vinos Tintos/", expectedCode: "vinoteca"},
+		{name: "vinoteca directa", rawCategory: "Vinoteca", expectedCode: "vinoteca"},
+
+		// Vinagre NO debe ir a vinoteca (guard conserva/vinagre antes que vino)
+		{name: "vinagre de manzana va a almacen", rawCategory: "Vinagre de Manzana", expectedCode: "almacen"},
+
+		// Carnicería — frescos
+		{name: "path carniceria pollo entero", rawCategory: "/Carnicería/Pollo entero/", expectedCode: "carniceria"},
+		{name: "milanesa de ternera", rawCategory: "Milanesa de Ternera", expectedCode: "carniceria"},
+		{name: "bondiola fresca", rawCategory: "Bondiola", expectedCode: "carniceria"},
+
+		// Conservas de carne NO debe ir a carniceria (guard conserva antes que carne)
+		{name: "conservas de carne va a almacen", rawCategory: "/Almacén/Conservas de carne/", expectedCode: "almacen"},
+		{name: "conservas de pescado va a almacen", rawCategory: "Conservas de Pescado", expectedCode: "almacen"},
+
+		// Verdulería
+		{name: "path frutas y verduras manzana", rawCategory: "/Frutas y Verduras/Manzana/", expectedCode: "verduleria"},
+		{name: "verdura hoja", rawCategory: "Verduras de hoja", expectedCode: "verduleria"},
+		{name: "fruteria directa", rawCategory: "Frutería", expectedCode: "verduleria"},
+
+		// Mermelada de fruta NO debe ir a verduleria (guard mermelada antes que fruta)
+		{name: "mermelada de fruta va a almacen", rawCategory: "Mermelada de Fruta", expectedCode: "almacen"},
+
+		// Veterinaria
+		{name: "alimento balanceado perro", rawCategory: "Alimento balanceado perro", expectedCode: "veterinaria"},
+		{name: "gato alimento", rawCategory: "Alimento para Gato", expectedCode: "veterinaria"},
+		{name: "mascota accesorios", rawCategory: "Mascotas", expectedCode: "veterinaria"},
+		{name: "balanceado pet", rawCategory: "Balanceado Premium", expectedCode: "veterinaria"},
+
+		// Panadería y Cafetería
+		{name: "panaderia directa", rawCategory: "Panadería", expectedCode: "panaderia"},
+		{name: "path panaderia factura", rawCategory: "/Panadería/Facturas/", expectedCode: "panaderia"},
+		{name: "panificados frescos", rawCategory: "Panificados Frescos", expectedCode: "panaderia"},
+		{name: "bizcochuelo", rawCategory: "Bizcochuelo de vainilla", expectedCode: "panaderia"},
+		{name: "budin de pan", rawCategory: "Budín de pan", expectedCode: "panaderia"},
+		{name: "magdalena", rawCategory: "Magdalenas artesanales", expectedCode: "panaderia"},
+
+		// Galletitas packaged → almacen (NO panadería)
+		{name: "galletitas dulces va a almacen", rawCategory: "Galletitas Dulces", expectedCode: "almacen"},
+		{name: "galletitas saladas va a almacen", rawCategory: "Galletitas Saladas", expectedCode: "almacen"},
+
+		// Librería y Papelería
+		{name: "libreria directa", rawCategory: "Librería", expectedCode: "libreria"},
+		{name: "cuaderno", rawCategory: "Cuaderno universitario", expectedCode: "libreria"},
+		{name: "lapiz", rawCategory: "Lápiz Negro", expectedCode: "libreria"},
+
+		// Juguetería
+		{name: "juguete", rawCategory: "Juguetes para niños", expectedCode: "jugueteria"},
+		{name: "jugueteria directa", rawCategory: "Juguetería", expectedCode: "jugueteria"},
+
+		// Peluquería y Estética
+		{name: "peluqueria directa", rawCategory: "Peluquería", expectedCode: "peluqueria"},
+		{name: "estetica", rawCategory: "Estética corporal", expectedCode: "peluqueria"},
+
+		// Piletas y Jardín
+		{name: "pileta directa", rawCategory: "Piletas", expectedCode: "piletas"},
+		{name: "jardin", rawCategory: "Jardín y Exterior", expectedCode: "piletas"},
+
+		// Electricidad
+		{name: "electricidad directa", rawCategory: "Electricidad", expectedCode: "electricidad"},
+		{name: "iluminacion", rawCategory: "Iluminación LED", expectedCode: "electricidad"},
+
+		// Yogur con frutas: yogur gana (fiambreria antes que verduleria)
+		{name: "yogur con frutas va a fiambreria", rawCategory: "/Lácteos/Yogures/Yogur con frutas/", expectedCode: "fiambreria"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assignment, ok := vo.ResolveBusinessTypeFromProductCategory(tc.rawCategory)
+			require.True(t, ok, "rawCategory %q should resolve to a business type", tc.rawCategory)
+			assert.Equal(t, tc.expectedCode, assignment.BusinessTypeCode, "rawCategory=%q", tc.rawCategory)
+		})
+	}
 }

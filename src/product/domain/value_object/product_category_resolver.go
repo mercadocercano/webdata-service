@@ -22,25 +22,34 @@ type productCategoryRule struct {
 // productCategoryRules is evaluated in order. The FIRST rule whose keyword is found
 // inside the normalized category wins. Put more specific keywords before broader ones
 // when two could match the same string (e.g. "yogur" before "lacteo").
+//
+// COLLISION NOTES (order is load-bearing):
+//   - "vinagre" before "vino": "Vinagre de manzana" → almacen, not vinoteca.
+//   - "conserva" before "carne"/"pollo": "Conservas de carne" → almacen, not carniceria.
+//   - "mermelada"/"salsa" before "fruta"/"verdura": "Mermelada de fruta" → almacen, not verduleria.
+//   - "yogur" first of all: "Yogur con frutas" → fiambreria (wins over verduleria).
+//   - Specific rubros (panaderia, carniceria, verduleria, veterinaria, vinoteca, libreria,
+//     jugueteria, peluqueria, piletas, electricidad) go BEFORE the almacen catch-all block.
 var productCategoryRules = []productCategoryRule{
 	// --- Fiambrería (taxonomía: lácteos + fiambres/quesos van a fiambrería) ---
-	{keyword: "yogur", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "queso", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "fiambre", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "lacteo", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "lacteos", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "leche", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "manteca", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "crema", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
-	{keyword: "margarina", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería"},
+	// Must be FIRST so "yogur con frutas" → fiambreria, not verduleria.
+	{keyword: "yogur", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "queso", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "fiambre", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "lacteo", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "lacteos", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "leche", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "manteca", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "crema", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
+	{keyword: "margarina", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},
 
 	// --- Limpieza ---
-	{keyword: "limpieza", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
-	{keyword: "lavandina", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
-	{keyword: "detergente", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
-	{keyword: "cuidado de ropa", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
-	{keyword: "ropa lavado", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
-	{keyword: "suavizante", businessTypeCode: "limpieza", businessTypeName: "Limpieza"},
+	{keyword: "limpieza", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
+	{keyword: "lavandina", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
+	{keyword: "detergente", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
+	{keyword: "cuidado de ropa", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
+	{keyword: "ropa lavado", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
+	{keyword: "suavizante", businessTypeCode: "limpieza", businessTypeName: "Casa de Limpieza"},
 
 	// --- Farmacia ---
 	{keyword: "farmacia", businessTypeCode: "farmacia", businessTypeName: "Farmacia"},
@@ -57,21 +66,97 @@ var productCategoryRules = []productCategoryRule{
 	{keyword: "desodorante", businessTypeCode: "perfumeria", businessTypeName: "Perfumería"},
 
 	// --- Ferretería ---
-	{keyword: "ferreteria", businessTypeCode: "ferreteria", businessTypeName: "Ferretería"},
-	{keyword: "construccion", businessTypeCode: "ferreteria", businessTypeName: "Ferretería"},
-	{keyword: "sanitario", businessTypeCode: "ferreteria", businessTypeName: "Ferretería"},
+	{keyword: "ferreteria", businessTypeCode: "ferreteria", businessTypeName: "Ferretería y Corralón"},
+	{keyword: "construccion", businessTypeCode: "ferreteria", businessTypeName: "Ferretería y Corralón"},
+	{keyword: "sanitario", businessTypeCode: "ferreteria", businessTypeName: "Ferretería y Corralón"},
 
 	// --- Casa de Electrodomésticos ---
-	{keyword: "electrodomestico", businessTypeCode: "electrodomesticos", businessTypeName: "Casa de Electrodomésticos"},
-	{keyword: "electronica", businessTypeCode: "electrodomesticos", businessTypeName: "Casa de Electrodomésticos"},
-	{keyword: "tecnologia", businessTypeCode: "electrodomesticos", businessTypeName: "Casa de Electrodomésticos"},
+	{keyword: "electrodomestico", businessTypeCode: "electrodomesticos", businessTypeName: "Electrodomésticos"},
+	{keyword: "electronica", businessTypeCode: "electrodomesticos", businessTypeName: "Electrodomésticos"},
+	{keyword: "tecnologia", businessTypeCode: "electrodomesticos", businessTypeName: "Electrodomésticos"},
+
+	// --- Electricidad ---
+	{keyword: "electricidad", businessTypeCode: "electricidad", businessTypeName: "Electricidad"},
+	{keyword: "iluminacion", businessTypeCode: "electricidad", businessTypeName: "Electricidad"},
+	// "cable" is intentionally short but distinct enough; padding handles boundary.
+	{keyword: " cable ", businessTypeCode: "electricidad", businessTypeName: "Electricidad"},
 
 	// --- Bazar ---
 	{keyword: "bazar", businessTypeCode: "bazar", businessTypeName: "Bazar"},
 
 	// --- Tienda de Ropa ---
-	{keyword: "indumentaria", businessTypeCode: "ropa", businessTypeName: "Tienda de Ropa"},
-	{keyword: "calzado", businessTypeCode: "ropa", businessTypeName: "Tienda de Ropa"},
+	{keyword: "indumentaria", businessTypeCode: "ropa", businessTypeName: "Ropa y Calzado"},
+	{keyword: "calzado", businessTypeCode: "ropa", businessTypeName: "Ropa y Calzado"},
+
+	// --- Piletas y Jardín ---
+	{keyword: "pileta", businessTypeCode: "piletas", businessTypeName: "Piletas y Jardín"},
+	{keyword: "jardin", businessTypeCode: "piletas", businessTypeName: "Piletas y Jardín"},
+
+	// --- Peluquería y Estética ---
+	{keyword: "peluqueria", businessTypeCode: "peluqueria", businessTypeName: "Peluquería y Estética"},
+	{keyword: "estetica", businessTypeCode: "peluqueria", businessTypeName: "Peluquería y Estética"},
+
+	// --- Juguetería ---
+	{keyword: "juguete", businessTypeCode: "jugueteria", businessTypeName: "Juguetería"},
+	{keyword: "jugueteria", businessTypeCode: "jugueteria", businessTypeName: "Juguetería"},
+
+	// --- Librería y Papelería ---
+	{keyword: "libreria", businessTypeCode: "libreria", businessTypeName: "Librería y Papelería"},
+	{keyword: "papeleria", businessTypeCode: "libreria", businessTypeName: "Librería y Papelería"},
+	{keyword: "cuaderno", businessTypeCode: "libreria", businessTypeName: "Librería y Papelería"},
+	{keyword: "lapiz", businessTypeCode: "libreria", businessTypeName: "Librería y Papelería"},
+
+	// --- Almacén catch-all guards (MUST be before carniceria/verduleria/vinoteca rules) ---
+	// These prevent content-like subcategories from being mis-classified by the specific
+	// rubros below. Order: conserva before carne/pollo; mermelada+salsa before fruta/verdura;
+	// vinagre before vino.
+	{keyword: "conserva", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
+	{keyword: "mermelada", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
+	{keyword: "salsa", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
+	{keyword: "vinagre", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
+
+	// --- Carnicería (frescos: carne, pollo, milanesa, bondiola) ---
+	// NOTE: "conserva" guard above ensures "Conservas de carne" → almacen, not carniceria.
+	{keyword: "carne", businessTypeCode: "carniceria", businessTypeName: "Carnicería"},
+	{keyword: "pollo", businessTypeCode: "carniceria", businessTypeName: "Carnicería"},
+	{keyword: "milanesa", businessTypeCode: "carniceria", businessTypeName: "Carnicería"},
+	{keyword: "bondiola", businessTypeCode: "carniceria", businessTypeName: "Carnicería"},
+	{keyword: "carniceria", businessTypeCode: "carniceria", businessTypeName: "Carnicería"},
+
+	// --- Verdulería y Frutería ---
+	// NOTE: "mermelada" and "salsa" guards above prevent "Mermelada de fruta" → verduleria.
+	{keyword: "verdura", businessTypeCode: "verduleria", businessTypeName: "Verdulería y Frutería"},
+	{keyword: "fruta", businessTypeCode: "verduleria", businessTypeName: "Verdulería y Frutería"},
+	{keyword: "verduleria", businessTypeCode: "verduleria", businessTypeName: "Verdulería y Frutería"},
+	{keyword: "fruteria", businessTypeCode: "verduleria", businessTypeName: "Verdulería y Frutería"},
+
+	// --- Veterinaria y Mascotas ---
+	{keyword: "mascota", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+	{keyword: "veterinaria", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+	{keyword: "perro", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+	{keyword: "gato", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+	{keyword: "balanceado", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+	{keyword: "alimento para", businessTypeCode: "veterinaria", businessTypeName: "Veterinaria y Mascotas"},
+
+	// --- Panadería y Cafetería (frescos: pan artesanal, factura, etc.) ---
+	// "galletita" stays in almacen (packaged, not fresh bakery) — its rule is in the
+	// almacen block below, which comes AFTER this section.
+	// "pan " with trailing space avoids matching "panificado" or "pantalon".
+	{keyword: "pan ", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "panaderia", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "panificado", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "factura", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "bizcochuelo", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "budin", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+	{keyword: "magdalena", businessTypeCode: "panaderia", businessTypeName: "Panadería y Cafetería"},
+
+	// --- Vinoteca ---
+	// NOTE: "vinagre" guard above ensures "Vinagre de manzana" → almacen, not vinoteca.
+	// "vino" with boundaries: padded string is " <normalized> " so "vino" matches
+	// " vino malbec " but NOT " vinagre " (which was already caught above).
+	{keyword: "vino", businessTypeCode: "vinoteca", businessTypeName: "Vinoteca"},
+	{keyword: "vinoteca", businessTypeCode: "vinoteca", businessTypeName: "Vinoteca"},
+	{keyword: "vinos", businessTypeCode: "vinoteca", businessTypeName: "Vinoteca"},
 
 	// --- Almacén de Barrio (catch-all de alimentos/bebidas/consumo masivo) ---
 	// Bebidas
@@ -80,9 +165,7 @@ var productCategoryRules = []productCategoryRule{
 	{keyword: "agua", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "jugo", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "cerveza", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "vino", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	// Desayuno / infusiones
-	{keyword: "cafe", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "cafe", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "infusion", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "yerba", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
@@ -90,11 +173,7 @@ var productCategoryRules = []productCategoryRule{
 	{keyword: "te ", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"}, // trailing space to avoid "tecnologia"
 	// Aceites / condimentos
 	{keyword: "aceite", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "vinagre", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "condimento", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "salsa", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "conserva", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "mermelada", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	// Harinas / granos
 	{keyword: "harina", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "arroz", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
@@ -104,11 +183,9 @@ var productCategoryRules = []productCategoryRule{
 	{keyword: "legumbre", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "azucar", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "sal", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	// Panadería / galletitas
+	// Panadería packaged (galletita → almacen, not panaderia — consumo masivo empaquetado)
 	{keyword: "galletita", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	{keyword: "pan ", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"}, // trailing space
-	{keyword: "panaderia", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
-	// Golosinas / chocolates / snacks (kiosco también aplica; ante duda → almacen per spec)
+	// Golosinas / chocolates / snacks
 	{keyword: "chocolate", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "golosina", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},
 	{keyword: "alfajor", businessTypeCode: "almacen", businessTypeName: "Almacén de Barrio"},

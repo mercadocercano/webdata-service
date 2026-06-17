@@ -97,16 +97,15 @@ func TestAutoMatchBusinessTypes_GeneratesProposalsByCategory(t *testing.T) {
 	assert.Contains(t, aceiteProposal.ProposedBusinessTypes[0].MatchReason, "category_match")
 	assert.GreaterOrEqual(t, aceiteProposal.ConfidenceScore, 0.7)
 
-	// Carnes → almacen (carniceria no es un business type válido en el catálogo del owner;
-	// la categoría "carnes" no tiene un tipo propio, se propone almacen como alternativa).
+	// Carnes → carniceria (primer candidato) + almacen como alternativa.
 	carneProposal := proposalMap[carne.ID]
 	assert.NotEmpty(t, carneProposal.ProposedBusinessTypes)
-	assert.Equal(t, "almacen", carneProposal.ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "carniceria", carneProposal.ProposedBusinessTypes[0].Code)
 
-	// Verduras → almacen (verduleria no es un business type válido en el catálogo del owner)
+	// Verduras → verduleria (primer candidato) + almacen como alternativa.
 	verduraProposal := proposalMap[verdura.ID]
 	assert.NotEmpty(t, verduraProposal.ProposedBusinessTypes)
-	assert.Equal(t, "almacen", verduraProposal.ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "verduleria", verduraProposal.ProposedBusinessTypes[0].Code)
 }
 
 // T-007 extension: max 3 business type options per product
@@ -125,6 +124,62 @@ func TestAutoMatchBusinessTypes_Max3OptionsPerProduct(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Proposals, 1)
 	assert.LessOrEqual(t, len(result.Proposals[0].ProposedBusinessTypes), 3)
+}
+
+// TestAutoMatchBusinessTypes_NuevosRubrosCorrectos verifica que los rubros nuevos
+// (vinoteca, carniceria, verduleria, veterinaria, panaderia) aparezcan como
+// primer candidato en sus categorías respectivas.
+func TestAutoMatchBusinessTypes_NuevosRubrosCorrectos(t *testing.T) {
+	repo := newMockProductRepo()
+	btProvider := &mockBusinessTypeProvider{types: defaultBusinessTypes()}
+	tenantID := uuid.New()
+	sourceID := uuid.New()
+
+	vino := createTestProduct(tenantID, sourceID, "Vino Malbec 750ml", "Vinos Tintos", "vinos")
+	carne := createTestProduct(tenantID, sourceID, "Nalga 1kg", "Carnes Vacunas", "carnes")
+	verdura := createTestProduct(tenantID, sourceID, "Tomate Redondo", "Verduras", "verduras")
+	mascota := createTestProduct(tenantID, sourceID, "Alimento perro adulto", "Mascotas", "mascotas")
+	pan := createTestProduct(tenantID, sourceID, "Pan de campo 1kg", "Panadería", "panaderia")
+
+	for _, p := range []*entity.ScrapedProduct{vino, carne, verdura, mascota, pan} {
+		_, _ = repo.Upsert(context.Background(), p)
+	}
+
+	uc := usecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
+	result, err := uc.Execute(context.Background(), tenantID, usecase.AutoMatchRequest{})
+
+	require.NoError(t, err)
+	assert.Equal(t, 5, result.MatchedCount)
+
+	proposalMap := make(map[uuid.UUID]usecase.AutoMatchProposal)
+	for _, p := range result.Proposals {
+		proposalMap[p.ProductID] = p
+	}
+
+	// vinos → vinoteca como primer candidato
+	vinoProposal := proposalMap[vino.ID]
+	require.NotEmpty(t, vinoProposal.ProposedBusinessTypes)
+	assert.Equal(t, "vinoteca", vinoProposal.ProposedBusinessTypes[0].Code, "vinos debe proponer vinoteca primero")
+
+	// carnes → carniceria como primer candidato
+	carneProposal := proposalMap[carne.ID]
+	require.NotEmpty(t, carneProposal.ProposedBusinessTypes)
+	assert.Equal(t, "carniceria", carneProposal.ProposedBusinessTypes[0].Code, "carnes debe proponer carniceria primero")
+
+	// verduras → verduleria como primer candidato
+	verduraProposal := proposalMap[verdura.ID]
+	require.NotEmpty(t, verduraProposal.ProposedBusinessTypes)
+	assert.Equal(t, "verduleria", verduraProposal.ProposedBusinessTypes[0].Code, "verduras debe proponer verduleria primero")
+
+	// mascotas → veterinaria como primer candidato
+	mascotaProposal := proposalMap[mascota.ID]
+	require.NotEmpty(t, mascotaProposal.ProposedBusinessTypes)
+	assert.Equal(t, "veterinaria", mascotaProposal.ProposedBusinessTypes[0].Code, "mascotas debe proponer veterinaria primero")
+
+	// panaderia → panaderia como primer candidato
+	panProposal := proposalMap[pan.ID]
+	require.NotEmpty(t, panProposal.ProposedBusinessTypes)
+	assert.Equal(t, "panaderia", panProposal.ProposedBusinessTypes[0].Code, "panaderia debe proponer panaderia primero")
 }
 
 // T-009: Auto-match no aplica sin confirmacion del admin (endpoint solo retorna preview, no persiste)
@@ -247,8 +302,7 @@ func TestAutoMatchBusinessTypes_FuzzyMatchCategory(t *testing.T) {
 	tenantID := uuid.New()
 	sourceID := uuid.New()
 
-	// NormalizedCategory contains a known key; vinos → almacen (vinoteca no es un
-	// business type válido en el catálogo del owner).
+	// NormalizedCategory "vinos" → vinoteca (primer candidato) + almacen como alternativa.
 	p := createTestProduct(tenantID, sourceID, "Vino Tinto Malbec", "Vinos Tintos", "vinos")
 	_, _ = repo.Upsert(context.Background(), p)
 
@@ -257,5 +311,5 @@ func TestAutoMatchBusinessTypes_FuzzyMatchCategory(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.MatchedCount)
-	assert.Equal(t, "almacen", result.Proposals[0].ProposedBusinessTypes[0].Code)
+	assert.Equal(t, "vinoteca", result.Proposals[0].ProposedBusinessTypes[0].Code)
 }

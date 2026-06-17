@@ -9,11 +9,12 @@ import (
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceentity "github.com/mercadocercano/webdata-service/src/source/domain/entity"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	"github.com/robfig/cron/v3"
 )
 
-// schedulingLockDuration es el tiempo mínimo entre que se crea un job y el scheduler
-// puede volver a crear otro para la misma fuente. Evita el runaway de jobs duplicados.
-const schedulingLockDuration = 10 * time.Minute
+// schedulingFallbackDuration es el tiempo de espera cuando el cron_expression
+// es inválido o vacío. Evita re-scrapeo inmediato sin perder la fuente en el loop.
+const schedulingFallbackDuration = 10 * time.Minute
 
 const pollInterval = 60 * time.Second
 
@@ -59,9 +60,10 @@ func (s *Scheduler) scheduleRuns(ctx context.Context) {
 			}
 		}
 
-		// Avanzar next_run_at para evitar que el scheduler cree jobs duplicados
-		// antes de que el worker procese este job.
-		s.lockSourceUntilProcessed(ctx, src)
+		// Calcular el próximo next_run_at a partir del cron_expression.
+		// Esto garantiza que la fuente no vuelva a estar "due" hasta el
+		// horario real definido en el cron — evita el re-scrapeo a los 10 min.
+		s.advanceNextRunAt(ctx, src)
 	}
 }
 
@@ -84,9 +86,33 @@ func (s *Scheduler) createJob(ctx context.Context, src *sourceentity.Source, pag
 	}
 }
 
-func (s *Scheduler) lockSourceUntilProcessed(ctx context.Context, src *sourceentity.Source) {
-	nextRun := time.Now().Add(schedulingLockDuration)
+// advanceNextRunAt calcula el próximo next_run_at usando el cron_expression de la
+// fuente y lo persiste. Si el cron_expression es inválido o vacío, aplica un
+// fallback de schedulingFallbackDuration para evitar que la fuente entre en loop.
+// El disparo manual (POST /sources/{id}/trigger) no pasa por aquí: crea el job
+// directamente sin tocar next_run_at.
+func (s *Scheduler) advanceNextRunAt(ctx context.Context, src *sourceentity.Source) {
+	nextRun := nextRunFromCron(src.CronExpression, time.Now())
 	if err := s.sourceRepo.UpdateNextRunAt(ctx, src.ID, nextRun); err != nil {
-		fmt.Printf("[scheduler] error locking next_run_at for source %s: %v\n", src.ID, err)
+		fmt.Printf("[scheduler] error updating next_run_at for source %s: %v\n", src.ID, err)
 	}
+}
+
+// nextRunFromCron calcula el siguiente instante de ejecución para un cron_expression
+// estándar (5 campos) a partir de `from`. Si el expression es inválido o vacío,
+// devuelve from + schedulingFallbackDuration y loguea el error.
+func nextRunFromCron(expr string, from time.Time) time.Time {
+	if expr == "" {
+		fmt.Printf("[scheduler] cron_expression vacío, aplicando fallback de %s\n", schedulingFallbackDuration)
+		return from.Add(schedulingFallbackDuration)
+	}
+
+	schedule, err := cron.ParseStandard(expr)
+	if err != nil {
+		fmt.Printf("[scheduler] cron_expression inválido %q: %v — aplicando fallback de %s\n",
+			expr, err, schedulingFallbackDuration)
+		return from.Add(schedulingFallbackDuration)
+	}
+
+	return schedule.Next(from)
 }

@@ -74,7 +74,7 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 		}
 	}
 
-	created, updated, upsertErr := uc.upsertUC.ExecuteDetailed(ctx, job.TenantID, job.SourceID, &job.ID, rawProducts)
+	created, updated, upsertErr := uc.upsertUC.ExecuteDetailedWithFilter(ctx, job.TenantID, job.SourceID, &job.ID, rawProducts, source.ExcludedBrands)
 
 	found := len(rawProducts)
 	saved := created + updated

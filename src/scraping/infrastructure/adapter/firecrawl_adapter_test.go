@@ -10,6 +10,140 @@ import (
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 )
 
+// TestFirecrawlAdapter_ScrapeJSON_LazyLoadActions verifica que el payload de
+// ScrapeJSON incluye waitFor y un array actions con al menos un scroll "down",
+// y que FIRECRAWL_SCRAPE_SCROLLS controla la cantidad de pasos de scroll.
+func TestFirecrawlAdapter_ScrapeJSON_LazyLoadActions(t *testing.T) {
+	tests := []struct {
+		name          string
+		envScrolls    string // valor a inyectar en FIRECRAWL_SCRAPE_SCROLLS ("" = no setear)
+		envWaitFor    string // valor a inyectar en FIRECRAWL_SCRAPE_WAIT_FOR ("" = no setear)
+		wantScrolls   int    // cantidad de actions tipo "scroll" esperadas
+		wantWaitForMS int    // valor de waitFor esperado en el payload
+	}{
+		{
+			name:          "defaults: 3 scrolls y waitFor 3000",
+			wantScrolls:   3,
+			wantWaitForMS: 3000,
+		},
+		{
+			name:          "FIRECRAWL_SCRAPE_SCROLLS=5 produce 5 scrolls",
+			envScrolls:    "5",
+			wantScrolls:   5,
+			wantWaitForMS: 3000,
+		},
+		{
+			name:          "FIRECRAWL_SCRAPE_WAIT_FOR override",
+			envWaitFor:    "1500",
+			wantScrolls:   3,
+			wantWaitForMS: 1500,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Inyectar env variables para el subtest. Seteamos SIEMPRE (incluso
+			// a "") para aislar el test de la env del proceso/contenedor — si no,
+			// un FIRECRAWL_SCRAPE_SCROLLS heredado (ej. =6 en runtime) rompe el
+			// caso de defaults. Con "" el adapter usa su default interno.
+			t.Setenv("FIRECRAWL_SCRAPE_SCROLLS", tc.envScrolls)
+			t.Setenv("FIRECRAWL_SCRAPE_WAIT_FOR", tc.envWaitFor)
+
+			var capturedBody map[string]interface{}
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == http.MethodPost && r.URL.Path == "/scrape" {
+					if err := json.NewDecoder(r.Body).Decode(&capturedBody); err != nil {
+						http.Error(w, "bad request", http.StatusBadRequest)
+						return
+					}
+					// Respuesta mínima válida para que ScrapeJSON no falle al parsear
+					json.NewEncoder(w).Encode(map[string]interface{}{
+						"success": true,
+						"data": map[string]interface{}{
+							"json": map[string]interface{}{
+								"products": []interface{}{},
+							},
+						},
+					})
+					return
+				}
+				http.NotFound(w, r)
+			}))
+			defer server.Close()
+
+			adapter := newFirecrawlAdapterWithBaseURL("test-api-key", server.URL)
+			_, err := adapter.ScrapeJSON(
+				context.Background(),
+				"https://atomoconviene.com/atomo-ecommerce/home",
+				json.RawMessage(`{"type":"object"}`),
+				scrapingport.ExtractOptions{},
+			)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if capturedBody == nil {
+				t.Fatal("server did not receive a POST /scrape request")
+			}
+
+			// Verificar waitFor
+			waitFor, ok := capturedBody["waitFor"]
+			if !ok {
+				t.Fatal("payload missing waitFor field")
+			}
+			// JSON numbers se deserializan como float64 en map[string]interface{}
+			waitForVal, ok := waitFor.(float64)
+			if !ok {
+				t.Fatalf("waitFor is not a number, got %T", waitFor)
+			}
+			if int(waitForVal) != tc.wantWaitForMS {
+				t.Errorf("waitFor: expected %d ms, got %d", tc.wantWaitForMS, int(waitForVal))
+			}
+
+			// Verificar actions
+			actionsRaw, ok := capturedBody["actions"]
+			if !ok {
+				t.Fatal("payload missing actions field")
+			}
+			actions, ok := actionsRaw.([]interface{})
+			if !ok {
+				t.Fatalf("actions is not an array, got %T", actionsRaw)
+			}
+
+			// Contar scrolls y verificar que hay al menos uno
+			scrollCount := 0
+			for _, a := range actions {
+				action, ok := a.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if action["type"] == "scroll" {
+					if dir, _ := action["direction"].(string); dir == "down" {
+						scrollCount++
+					}
+				}
+			}
+			if scrollCount == 0 {
+				t.Error("actions debe contener al menos un scroll down")
+			}
+			if scrollCount != tc.wantScrolls {
+				t.Errorf("scroll count: expected %d, got %d", tc.wantScrolls, scrollCount)
+			}
+
+			// Verificar estructura básica: primer action es wait, último también
+			firstAction, ok := actions[0].(map[string]interface{})
+			if !ok || firstAction["type"] != "wait" {
+				t.Error("el primer action debe ser type:wait")
+			}
+			lastAction, ok := actions[len(actions)-1].(map[string]interface{})
+			if !ok || lastAction["type"] != "wait" {
+				t.Error("el último action debe ser type:wait")
+			}
+		})
+	}
+}
+
 // TestFirecrawlAdapter_Extract_AsyncPolling verifies regression for 3 bugs:
 //   - Bug 1: Extract POSTs to /extract, reads async job id, then polls GET /extract/{id}
 //   - Bug 2: data is parsed as a single object (not array)
@@ -222,5 +356,97 @@ func TestFirecrawlAdapter_ScrapeJSON_MissingAPIKey(t *testing.T) {
 	_, err := adapter.ScrapeJSON(context.Background(), "https://example.com", nil, scrapingport.ExtractOptions{})
 	if err == nil {
 		t.Fatal("expected error for missing API key, got nil")
+	}
+}
+
+// TestFirecrawlAdapter_Extract_EAN verifica que el campo EAN del schema
+// se parsea y se mapea al campo EAN de RawProduct (bug E17).
+func TestFirecrawlAdapter_Extract_EAN(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/extract":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": true,
+				"id":      "job-ean",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/extract/job-ean":
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "completed",
+				"data": map[string]interface{}{
+					"products": []map[string]interface{}{
+						{
+							"name":  "Fideos Don Vittorio 500g",
+							"price": 250.0,
+							"ean":   "7790895000087",
+							"sku":   "FID-500",
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	adapter := newFirecrawlAdapterWithBaseURL("test-api-key", server.URL)
+
+	products, err := adapter.Extract(
+		context.Background(),
+		"https://example.com/fideos",
+		json.RawMessage(`{"type":"object"}`),
+		scrapingport.ExtractOptions{},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+	if products[0].EAN != "7790895000087" {
+		t.Errorf("EAN: expected %q, got %q", "7790895000087", products[0].EAN)
+	}
+}
+
+// TestFirecrawlAdapter_ScrapeJSON_EAN verifica que el campo EAN también se
+// mapea correctamente en el path ScrapeJSON (mismo struct interno, mismo bug).
+func TestFirecrawlAdapter_ScrapeJSON_EAN(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data": map[string]interface{}{
+				"json": map[string]interface{}{
+					"products": []map[string]interface{}{
+						{
+							"name":  "Aceite Cocinero 900ml",
+							"price": 1200.0,
+							"ean":   "7790070011234",
+							"sku":   "ACE-900",
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	adapter := newFirecrawlAdapterWithBaseURL("test-api-key", server.URL)
+
+	products, err := adapter.ScrapeJSON(
+		context.Background(),
+		"https://example.com/aceite",
+		json.RawMessage(`{"type":"object"}`),
+		scrapingport.ExtractOptions{},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 1 {
+		t.Fatalf("expected 1 product, got %d", len(products))
+	}
+	if products[0].EAN != "7790070011234" {
+		t.Errorf("EAN: expected %q, got %q", "7790070011234", products[0].EAN)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
@@ -36,6 +37,15 @@ func parseDurationEnv(key string, defaultVal time.Duration) time.Duration {
 	return defaultVal
 }
 
+func parseIntEnv(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultVal
+}
+
 func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 	return &FirecrawlAdapter{
 		apiKey:       apiKey,
@@ -43,7 +53,10 @@ func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 		pollInterval: extractPollInterval,
 		pollTimeout:  parseDurationEnv("FIRECRAWL_EXTRACT_TIMEOUT", 5*time.Minute),
 		httpClient: &http.Client{
-			Timeout: parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 120*time.Second),
+			// Default raised to 180 s to match the ScrapeJSON payload timeout
+			// (waitFor + scroll actions add deliberate latency before Firecrawl
+			// responds; if the HTTP client times out first the request fails silently).
+			Timeout: parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 180*time.Second),
 		},
 	}
 }
@@ -114,6 +127,7 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 		Brand         string   `json:"brand"`
 		Category      string   `json:"category"`
 		SKU           string   `json:"sku"`
+		EAN           string   `json:"ean"`
 		InStock       *bool    `json:"in_stock"`
 	}
 
@@ -167,6 +181,7 @@ func (a *FirecrawlAdapter) pollExtractJob(ctx context.Context, jobID string) ([]
 				Brand:         p.Brand,
 				Category:      p.Category,
 				SKU:           p.SKU,
+				EAN:           p.EAN,
 				InStock:       p.InStock,
 			})
 		}
@@ -189,11 +204,33 @@ func (a *FirecrawlAdapter) ScrapeJSON(ctx context.Context, url string, schema js
 		jsonOptions["prompt"] = opts.Prompt
 	}
 
+	// Build the lazy-load scroll sequence.
+	// waitFor: extra ms Firecrawl waits after page load before extracting.
+	// actions: scroll sequence to trigger lazy-loaded images (e.g. PrestaShop stores
+	//   that use data-src and only resolve image_url when the element enters viewport).
+	// FIRECRAWL_SCRAPE_SCROLLS controls how many "scroll down" steps are injected
+	// between the initial wait and the final settle wait (default 3).
+	// Timeout default is 180s (raised from 120s) because waitFor + actions add
+	// up to ~3.5 s of deliberate waits before extraction even starts.
+	waitForMS := parseIntEnv("FIRECRAWL_SCRAPE_WAIT_FOR", 3000)
+	numScrolls := parseIntEnv("FIRECRAWL_SCRAPE_SCROLLS", 3)
+
+	actions := make([]map[string]interface{}, 0, 2+numScrolls)
+	actions = append(actions, map[string]interface{}{"type": "wait", "milliseconds": 2000})
+	for i := 0; i < numScrolls; i++ {
+		actions = append(actions, map[string]interface{}{"type": "scroll", "direction": "down"})
+	}
+	actions = append(actions, map[string]interface{}{"type": "wait", "milliseconds": 1500})
+
 	payload := map[string]interface{}{
 		"url":         url,
 		"formats":     []string{"json"},
 		"jsonOptions": jsonOptions,
-		"timeout":     int(parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 120*time.Second).Milliseconds()),
+		"waitFor":     waitForMS,
+		"actions":     actions,
+		// 180 s: raised from 120 s to account for waitFor + scroll action delays
+		// (sum of fixed waits is already 3.5 s before extraction starts).
+		"timeout": int(parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 180*time.Second).Milliseconds()),
 	}
 
 	respBody, err := a.doRequestWithRetry(ctx, "POST", "/scrape", payload)
@@ -211,6 +248,7 @@ func (a *FirecrawlAdapter) ScrapeJSON(ctx context.Context, url string, schema js
 		Brand         string   `json:"brand"`
 		Category      string   `json:"category"`
 		SKU           string   `json:"sku"`
+		EAN           string   `json:"ean"`
 		InStock       *bool    `json:"in_stock"`
 	}
 
@@ -239,6 +277,7 @@ func (a *FirecrawlAdapter) ScrapeJSON(ctx context.Context, url string, schema js
 			Brand:         p.Brand,
 			Category:      p.Category,
 			SKU:           p.SKU,
+			EAN:           p.EAN,
 			InStock:       p.InStock,
 		})
 	}

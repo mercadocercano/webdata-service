@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -79,11 +80,11 @@ func (a *PIMCatalogSyncerAdapter) SearchByEAN(ctx context.Context, tenantID uuid
 
 func (a *PIMCatalogSyncerAdapter) SearchByNameBrand(ctx context.Context, tenantID uuid.UUID, name, brand string) (*port.PIMGlobalProduct, error) {
 	params := url.Values{}
-	params.Set("search_name", name)
+	params.Set("search", name)
 	if brand != "" {
-		params.Set("search_brand", brand)
+		params.Set("brand", brand)
 	}
-	params.Set("limit", "1")
+	params.Set("limit", "10")
 
 	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/products?%s", a.baseURL, params.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -111,10 +112,17 @@ func (a *PIMCatalogSyncerAdapter) SearchByNameBrand(ctx context.Context, tenantI
 	if len(items) == 0 {
 		items = body.Data
 	}
-	if len(items) == 0 {
-		return nil, nil
+	// PIM's `search` param is a substring (ILIKE) match, so it can return
+	// loosely-related products. Only treat a result as an existing match when
+	// the name is an exact (case-insensitive) match — otherwise we'd overwrite
+	// a different real product's price/image. EAN dedup handles the rest.
+	target := strings.TrimSpace(name)
+	for i := range items {
+		if strings.EqualFold(strings.TrimSpace(items[i].Name), target) {
+			return &items[i], nil
+		}
 	}
-	return &items[0], nil
+	return nil, nil
 }
 
 func (a *PIMCatalogSyncerAdapter) Create(ctx context.Context, tenantID uuid.UUID, createReq port.CreatePIMProductRequest) (*port.PIMGlobalProduct, error) {
@@ -155,7 +163,7 @@ func (a *PIMCatalogSyncerAdapter) Update(ctx context.Context, tenantID uuid.UUID
 	}
 
 	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/products/%s", a.baseURL, id.String())
-	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}

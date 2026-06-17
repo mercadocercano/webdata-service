@@ -31,3 +31,6 @@ tmp/main
 # Engram
 .engram/engram.db
 .engram/*.db-*
+
+# Engram local agent memory (no commitear)
+memory/

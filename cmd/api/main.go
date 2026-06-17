@@ -19,6 +19,7 @@ import (
 	"github.com/mercadocercano/webdata-service/src/shared/database"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
+	webdatalogging "github.com/mercadocercano/webdata-service/src/webdata/infrastructure/logging"
 
 	"github.com/hornosg/go-shared/infrastructure/postgres"
 )
@@ -49,8 +50,11 @@ func main() {
 		DBName:  dbName,
 	})
 
+	// Canonical logger (ADR-001)
+	webdataLogger := webdatalogging.NewWebdataLogger("webdata-service")
+
 	// DI wiring
-	productModule := productconfig.NewProductModule(db)
+	productModule := productconfig.NewProductModule(db, webdataLogger)
 	sourceModule := sourceconfig.NewSourceModule(db, nil) // job repo wired after scraping module
 
 	firecrawlAdapter := adapter.NewFirecrawlAdapter(firecrawlKey)
@@ -82,7 +86,9 @@ func main() {
 
 	// Scheduler
 	sched := scheduler.NewScheduler(sourceModule.Repo, scrapingModule.Repo)
+	sched.WithLogger(webdataLogger)
 	workerPool := scheduler.NewWorkerPool(scrapingModule.ExecuteUC, 3)
+	workerPool.WithLogger(webdataLogger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

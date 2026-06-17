@@ -17,7 +17,7 @@ func TestNextRunFromCron_ValidExpression(t *testing.T) {
 	// Miércoles 2026-06-10 12:00:00 UTC
 	from := time.Date(2026, time.June, 10, 12, 0, 0, 0, time.UTC)
 
-	next := nextRunFromCron(expr, from)
+	next := nextRunFromCron(expr, from, nil)
 
 	// El lunes siguiente es 2026-06-15 06:00:00 UTC
 	expected := time.Date(2026, time.June, 15, 6, 0, 0, 0, time.UTC)
@@ -35,7 +35,7 @@ func TestNextRunFromCron_FromJustBefore(t *testing.T) {
 	// Lunes 2026-06-15 05:59:59 UTC — todavía no llegó la ventana
 	from := time.Date(2026, time.June, 15, 5, 59, 59, 0, time.UTC)
 
-	next := nextRunFromCron(expr, from)
+	next := nextRunFromCron(expr, from, nil)
 
 	// Debe disparar ese mismo lunes a las 06:00
 	expected := time.Date(2026, time.June, 15, 6, 0, 0, 0, time.UTC)
@@ -51,7 +51,7 @@ func TestNextRunFromCron_InvalidExpression(t *testing.T) {
 	expr := "no-es-un-cron-valido"
 	from := time.Now()
 
-	next := nextRunFromCron(expr, from)
+	next := nextRunFromCron(expr, from, nil)
 
 	// El resultado debe estar dentro del rango del fallback.
 	// Permitimos ±1 segundo de tolerancia por el tiempo de ejecución.
@@ -69,7 +69,7 @@ func TestNextRunFromCron_InvalidExpression(t *testing.T) {
 func TestNextRunFromCron_EmptyExpression(t *testing.T) {
 	from := time.Now()
 
-	next := nextRunFromCron("", from)
+	next := nextRunFromCron("", from, nil)
 
 	expectedMin := from.Add(schedulingFallbackDuration - time.Second)
 	expectedMax := from.Add(schedulingFallbackDuration + time.Second)
@@ -98,7 +98,7 @@ func TestNextRunFromCron_NoLoop(t *testing.T) {
 	from := time.Now()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			next := nextRunFromCron(tc.expr, from)
+			next := nextRunFromCron(tc.expr, from, nil)
 			if !next.After(from) {
 				t.Errorf("nextRunFromCron(%q) devolvió %v que NO es posterior a from=%v — loop garantizado",
 					tc.expr, next, from)

@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,6 +10,7 @@ import (
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
 	"github.com/mercadocercano/webdata-service/src/product/domain/value_object"
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
 type UpsertProductsUseCase struct {
@@ -18,10 +18,22 @@ type UpsertProductsUseCase struct {
 	categoryFinder port.SourceCategoryFinder
 	pimSync        *SyncProductToPIMUseCase
 	sourceName     string
+	logger         webdataport.WebdataEventLogger
 }
 
 func NewUpsertProductsUseCase(repo port.ProductRepository, categoryFinder port.SourceCategoryFinder) *UpsertProductsUseCase {
 	return &UpsertProductsUseCase{repo: repo, categoryFinder: categoryFinder}
+}
+
+// WithLogger inyecta el logger canónico (ADR-001). Nil-safe: si no se llama, los eventos se descartan.
+func (uc *UpsertProductsUseCase) WithLogger(logger webdataport.WebdataEventLogger) {
+	uc.logger = logger
+}
+
+func (uc *UpsertProductsUseCase) log(e webdataport.WebdataEvent) {
+	if uc.logger != nil {
+		uc.logger.Log(e)
+	}
 }
 
 func (uc *UpsertProductsUseCase) WithPIMSync(syncUC *SyncProductToPIMUseCase) {
@@ -88,7 +100,12 @@ func (uc *UpsertProductsUseCase) execute(
 		}
 		filteredCount := len(rawProducts) - len(filtered)
 		if filteredCount > 0 {
-			log.Printf("[upsert] filtered %d products by excluded_brands for source %s", filteredCount, sourceID)
+			uc.log(webdataport.WebdataEvent{
+				Event:        "webdata.products_filtered",
+				TenantID:     tenantID.String(),
+				SourceID:     sourceID.String(),
+				ProductCount: filteredCount,
+			})
 		}
 		rawProducts = filtered
 	}
@@ -124,14 +141,24 @@ func (uc *UpsertProductsUseCase) execute(
 					_ = uc.repo.SavePriceRecord(ctx, record)
 					updated++
 				} else {
-					fmt.Printf("[upsert] error saving price update for product %s (title=%q): %v\n", existing.ID, existing.Title, saveErr)
+					uc.log(webdataport.WebdataEvent{
+						Event:    "webdata.product_save_failed",
+						TenantID: tenantID.String(),
+						SourceID: sourceID.String(),
+						Reason:   saveErr.Error(),
+					})
 				}
 			} else {
 				existing.TouchLastSeen()
 				if _, saveErr := uc.repo.Upsert(ctx, existing); saveErr == nil {
 					updated++
 				} else {
-					fmt.Printf("[upsert] error touching last_seen for product %s (title=%q): %v\n", existing.ID, existing.Title, saveErr)
+					uc.log(webdataport.WebdataEvent{
+						Event:    "webdata.product_save_failed",
+						TenantID: tenantID.String(),
+						SourceID: sourceID.String(),
+						Reason:   saveErr.Error(),
+					})
 				}
 			}
 			uc.trySyncToPIM(ctx, existing)
@@ -159,7 +186,12 @@ func (uc *UpsertProductsUseCase) execute(
 
 		product, newErr := entity.NewScrapedProduct(params)
 		if newErr != nil {
-			fmt.Printf("[upsert] error constructing product (title=%q): %v\n", raw.Title, newErr)
+			uc.log(webdataport.WebdataEvent{
+				Event:    "webdata.product_save_failed",
+				TenantID: tenantID.String(),
+				SourceID: sourceID.String(),
+				Reason:   fmt.Sprintf("construct: %v", newErr),
+			})
 			continue
 		}
 
@@ -171,21 +203,35 @@ func (uc *UpsertProductsUseCase) execute(
 			var assignmentToApply *value_object.BusinessTypeAssignment
 			if perProduct, ok := value_object.ResolveBusinessTypeFromProductCategory(raw.Category); ok {
 				assignmentToApply = &perProduct
-				log.Printf("[upsert] per-product category resolver assigned business_type=%q to product %s (category=%q)",
-					perProduct.BusinessTypeCode, product.ID, raw.Category)
+				uc.log(webdataport.WebdataEvent{
+					Event:        "webdata.product_business_type_assigned",
+					TenantID:     tenantID.String(),
+					SourceID:     sourceID.String(),
+					BusinessType: perProduct.BusinessTypeCode,
+				})
 			} else if autoAssignment != nil {
 				assignmentToApply = autoAssignment
 			}
 			if assignmentToApply != nil {
 				assignments := []value_object.BusinessTypeAssignment{*assignmentToApply}
 				if btErr := uc.repo.SaveBusinessTypes(ctx, tenantID, product.ID, assignments); btErr != nil {
-					fmt.Printf("[upsert] error auto-assigning business type for product %s: %v\n", product.ID, btErr)
+					uc.log(webdataport.WebdataEvent{
+						Event:    "webdata.product_business_type_failed",
+						TenantID: tenantID.String(),
+						SourceID: sourceID.String(),
+						Reason:   btErr.Error(),
+					})
 				}
 				product.BusinessTypes = assignments
 			}
 			uc.trySyncToPIM(ctx, product)
 		} else {
-			fmt.Printf("[upsert] error saving new product (title=%q, hash=%s): %v\n", product.Title, product.ContentHash, upsertErr)
+			uc.log(webdataport.WebdataEvent{
+				Event:    "webdata.product_save_failed",
+				TenantID: tenantID.String(),
+				SourceID: sourceID.String(),
+				Reason:   upsertErr.Error(),
+			})
 		}
 	}
 
@@ -197,7 +243,12 @@ func (uc *UpsertProductsUseCase) trySyncToPIM(ctx context.Context, product *enti
 		return
 	}
 	if err := uc.pimSync.Execute(ctx, product, uc.sourceName); err != nil {
-		log.Printf("[upsert] pim-sync failed for product %s: %v", product.ID, err)
+		uc.log(webdataport.WebdataEvent{
+			Event:    "webdata.pim_sync_failed",
+			TenantID: product.TenantID.String(),
+			SourceID: product.SourceID.String(),
+			Reason:   err.Error(),
+		})
 	}
 }
 

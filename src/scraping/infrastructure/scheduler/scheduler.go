@@ -9,6 +9,7 @@ import (
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceentity "github.com/mercadocercano/webdata-service/src/source/domain/entity"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 	"github.com/robfig/cron/v3"
 )
 
@@ -21,10 +22,22 @@ const pollInterval = 60 * time.Second
 type Scheduler struct {
 	sourceRepo sourceport.SourceRepository
 	jobRepo    scrapingport.ScrapingJobRepository
+	logger     webdataport.WebdataEventLogger
 }
 
 func NewScheduler(sourceRepo sourceport.SourceRepository, jobRepo scrapingport.ScrapingJobRepository) *Scheduler {
 	return &Scheduler{sourceRepo: sourceRepo, jobRepo: jobRepo}
+}
+
+// WithLogger inyecta el logger canónico (ADR-001). Nil-safe.
+func (s *Scheduler) WithLogger(logger webdataport.WebdataEventLogger) {
+	s.logger = logger
+}
+
+func (s *Scheduler) logEvt(e webdataport.WebdataEvent) {
+	if s.logger != nil {
+		s.logger.Log(e)
+	}
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
@@ -44,7 +57,10 @@ func (s *Scheduler) Start(ctx context.Context) {
 func (s *Scheduler) scheduleRuns(ctx context.Context) {
 	sources, err := s.sourceRepo.FindDueForScraping(ctx)
 	if err != nil {
-		fmt.Printf("[scheduler] error finding due sources: %v\n", err)
+		s.logEvt(webdataport.WebdataEvent{
+			Event:  "webdata.scheduler_source_error",
+			Reason: err.Error(),
+		})
 		return
 	}
 
@@ -77,12 +93,22 @@ func (s *Scheduler) createJob(ctx context.Context, src *sourceentity.Source, pag
 		job, err = entity.NewScrapingJob(src.TenantID, src.ID, "scheduled")
 	}
 	if err != nil {
-		fmt.Printf("[scheduler] error creating job for source %s page %d: %v\n", src.ID, page, err)
+		s.logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.scheduler_job_error",
+			SourceID: src.ID.String(),
+			Page:     page,
+			Reason:   fmt.Sprintf("create: %v", err),
+		})
 		return
 	}
 
 	if err := s.jobRepo.Save(ctx, job); err != nil {
-		fmt.Printf("[scheduler] error saving job for source %s page %d: %v\n", src.ID, page, err)
+		s.logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.scheduler_job_error",
+			SourceID: src.ID.String(),
+			Page:     page,
+			Reason:   fmt.Sprintf("save: %v", err),
+		})
 	}
 }
 
@@ -92,25 +118,41 @@ func (s *Scheduler) createJob(ctx context.Context, src *sourceentity.Source, pag
 // El disparo manual (POST /sources/{id}/trigger) no pasa por aquí: crea el job
 // directamente sin tocar next_run_at.
 func (s *Scheduler) advanceNextRunAt(ctx context.Context, src *sourceentity.Source) {
-	nextRun := nextRunFromCron(src.CronExpression, time.Now())
+	nextRun := nextRunFromCron(src.CronExpression, time.Now(), s.logger)
 	if err := s.sourceRepo.UpdateNextRunAt(ctx, src.ID, nextRun); err != nil {
-		fmt.Printf("[scheduler] error updating next_run_at for source %s: %v\n", src.ID, err)
+		s.logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.scheduler_source_error",
+			SourceID: src.ID.String(),
+			Reason:   fmt.Sprintf("update next_run_at: %v", err),
+		})
 	}
 }
 
 // nextRunFromCron calcula el siguiente instante de ejecución para un cron_expression
 // estándar (5 campos) a partir de `from`. Si el expression es inválido o vacío,
-// devuelve from + schedulingFallbackDuration y loguea el error.
-func nextRunFromCron(expr string, from time.Time) time.Time {
+// devuelve from + schedulingFallbackDuration y emite un evento canónico.
+func nextRunFromCron(expr string, from time.Time, logger webdataport.WebdataEventLogger) time.Time {
+	logEvt := func(e webdataport.WebdataEvent) {
+		if logger != nil {
+			logger.Log(e)
+		}
+	}
 	if expr == "" {
-		fmt.Printf("[scheduler] cron_expression vacío, aplicando fallback de %s\n", schedulingFallbackDuration)
+		logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.scheduler_cron_fallback",
+			Reason:   "cron_expression vacío",
+			Duration: schedulingFallbackDuration.String(),
+		})
 		return from.Add(schedulingFallbackDuration)
 	}
 
 	schedule, err := cron.ParseStandard(expr)
 	if err != nil {
-		fmt.Printf("[scheduler] cron_expression inválido %q: %v — aplicando fallback de %s\n",
-			expr, err, schedulingFallbackDuration)
+		logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.scheduler_cron_fallback",
+			Reason:   fmt.Sprintf("cron inválido %q: %v", expr, err),
+			Duration: schedulingFallbackDuration.String(),
+		})
 		return from.Add(schedulingFallbackDuration)
 	}
 

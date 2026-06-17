@@ -3,21 +3,33 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
 	"github.com/mercadocercano/webdata-service/src/product/domain/value_object"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
 type SyncProductToPIMUseCase struct {
 	repo   port.ProductRepository
 	syncer port.PIMCatalogSyncer
+	logger webdataport.WebdataEventLogger
 }
 
 func NewSyncProductToPIMUseCase(repo port.ProductRepository, syncer port.PIMCatalogSyncer) *SyncProductToPIMUseCase {
 	return &SyncProductToPIMUseCase{repo: repo, syncer: syncer}
+}
+
+// WithLogger inyecta el logger canónico (ADR-001). Nil-safe.
+func (uc *SyncProductToPIMUseCase) WithLogger(logger webdataport.WebdataEventLogger) {
+	uc.logger = logger
+}
+
+func (uc *SyncProductToPIMUseCase) logEvt(e webdataport.WebdataEvent) {
+	if uc.logger != nil {
+		uc.logger.Log(e)
+	}
 }
 
 func (uc *SyncProductToPIMUseCase) Execute(ctx context.Context, product *entity.ScrapedProduct, sourceName string) error {
@@ -90,7 +102,12 @@ func (uc *SyncProductToPIMUseCase) createNew(ctx context.Context, product *entit
 func (uc *SyncProductToPIMUseCase) markSynced(ctx context.Context, product *entity.ScrapedProduct) error {
 	product.MarkSyncedToPIM()
 	if err := uc.repo.MarkSyncedToPIM(ctx, product.TenantID, product.ID); err != nil {
-		log.Printf("[sync-pim] warning: synced but failed to mark: product=%s err=%v", product.ID, err)
+		uc.logEvt(webdataport.WebdataEvent{
+			Event:    "webdata.pim_sync_mark_failed",
+			TenantID: product.TenantID.String(),
+			SourceID: product.SourceID.String(),
+			Reason:   err.Error(),
+		})
 		return nil
 	}
 	return nil
@@ -111,7 +128,12 @@ func (uc *SyncProductToPIMUseCase) SyncBatch(ctx context.Context, products []*en
 			continue
 		}
 		if err := uc.Execute(ctx, p, sourceName); err != nil {
-			log.Printf("[sync-pim] error syncing product %s: %v", p.ID, err)
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:    "webdata.pim_sync_failed",
+				TenantID: p.TenantID.String(),
+				SourceID: p.SourceID.String(),
+				Reason:   err.Error(),
+			})
 			failed++
 			continue
 		}
@@ -121,31 +143,73 @@ func (uc *SyncProductToPIMUseCase) SyncBatch(ctx context.Context, products []*en
 }
 
 // SyncPending finds and syncs all products pending PIM sync for a tenant.
-func (uc *SyncProductToPIMUseCase) SyncPending(ctx context.Context, tenantID uuid.UUID, sourceName string) (synced, failed int, err error) {
-	filter := port.ProductFilter{Page: 1, PageSize: 500}
-	products, _, err := uc.repo.FindAll(ctx, tenantID, filter)
-	if err != nil {
-		return 0, 0, fmt.Errorf("fetching products: %w", err)
-	}
+// It paginates through all pending products (NotSyncedToPIM=true) in batches
+// of syncPendingPageSize until no more products are found.
+const syncPendingPageSize = 200
 
-	for _, p := range products {
-		if !p.NeedsPIMSync() {
-			continue
+func (uc *SyncProductToPIMUseCase) SyncPending(ctx context.Context, tenantID uuid.UUID, sourceName string) (synced, failed int, err error) {
+	// Always fetch page=1 with NotSyncedToPIM=true: as products get marked synced,
+	// the "pending" set shrinks and page=1 always returns the next unprocessed batch.
+	// Incrementing the page number here would skip products (N products just synced
+	// are removed from the filter, shifting what page=2 sees).
+	const maxIterations = 500 // safety net: prevents infinite loops when every product in a batch fails
+	for iter := 0; iter < maxIterations; iter++ {
+		filter := port.ProductFilter{
+			NotSyncedToPIM: true,
+			Page:           1,
+			PageSize:       syncPendingPageSize,
 		}
-		if syncErr := uc.Execute(ctx, p, sourceName); syncErr != nil {
-			log.Printf("[sync-pim] error syncing product %s: %v", p.ID, syncErr)
-			failed++
-			continue
+		products, _, fetchErr := uc.repo.FindAll(ctx, tenantID, filter)
+		if fetchErr != nil {
+			return synced, failed, fmt.Errorf("fetching pending products: %w", fetchErr)
 		}
-		synced++
+		if len(products) == 0 {
+			break
+		}
+
+		batchSynced := 0
+		for _, p := range products {
+			if !p.NeedsPIMSync() {
+				batchSynced++ // counts as "consumed" from the pending set (it's not actually pending)
+				continue
+			}
+			if syncErr := uc.Execute(ctx, p, sourceName); syncErr != nil {
+				uc.logEvt(webdataport.WebdataEvent{
+					Event:    "webdata.pim_sync_failed",
+					TenantID: p.TenantID.String(),
+					SourceID: p.SourceID.String(),
+					Reason:   syncErr.Error(),
+				})
+				failed++
+				continue
+			}
+			synced++
+			batchSynced++
+		}
+
+		// If no product in this batch made progress (all failed), stop to avoid a loop.
+		if batchSynced == 0 {
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:     "webdata.sync_batch_stalled",
+				BatchSize: len(products),
+			})
+			break
+		}
 	}
 
 	// After batch sync, trigger PIM to refresh template products from global_products
 	if synced > 0 {
 		if err := uc.syncer.RefreshTemplateProducts(ctx); err != nil {
-			log.Printf("[sync-pim] warning: refresh template products failed: %v", err)
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:  "webdata.pim_refresh_failed",
+				Reason: err.Error(),
+				Synced: synced,
+			})
 		} else {
-			log.Printf("[sync-pim] template products refreshed after syncing %d products", synced)
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:  "webdata.pim_sync_completed",
+				Synced: synced,
+			})
 		}
 	}
 

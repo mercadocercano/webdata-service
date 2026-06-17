@@ -9,6 +9,25 @@ import (
 	"github.com/mercadocercano/webdata-service/src/source/domain/value_object"
 )
 
+// SourceFailureKind describe el tipo de reacción del dominio ante un fallo.
+type SourceFailureKind string
+
+const (
+	SourceFailureKindBackoff        SourceFailureKind = "backoff"
+	SourceFailureKindCircuitBreaker SourceFailureKind = "circuit_breaker"
+)
+
+// SourceFailureEvent es el evento de dominio emitido por RecordFailure.
+// El caller (use case, adapter de persistencia) lo loguea con el logger canónico.
+type SourceFailureEvent struct {
+	Kind                SourceFailureKind
+	SourceID            uuid.UUID
+	SourceName          string
+	ConsecutiveFailures int
+	BackoffMinutes      float64 // sólo válido para Kind=backoff
+	Reason              string
+}
+
 const (
 	circuitBreakerThreshold = 5
 	backoffBaseMinutes      = 5.0
@@ -131,7 +150,10 @@ func (s *Source) RecordSuccess() {
 	s.UpdatedAt = now
 }
 
-func (s *Source) RecordFailure(reason string) {
+// RecordFailure muta el estado de la fuente ante un fallo y retorna un
+// SourceFailureEvent para que el caller lo loguee con el logger canónico.
+// La entidad no depende de infraestructura de logging (dominio limpio).
+func (s *Source) RecordFailure(reason string) SourceFailureEvent {
 	now := time.Now()
 	s.TotalRuns++
 	s.FailedRuns++
@@ -140,10 +162,16 @@ func (s *Source) RecordFailure(reason string) {
 	s.ConsecutiveFailures++
 	s.recalculateHealthScore()
 
+	evt := SourceFailureEvent{
+		SourceID:            s.ID,
+		SourceName:          s.Name,
+		ConsecutiveFailures: s.ConsecutiveFailures,
+		Reason:              reason,
+	}
+
 	if s.ConsecutiveFailures >= circuitBreakerThreshold {
-		fmt.Printf("[circuit-breaker] source %s (%s) desactivada tras %d fallos consecutivos: %s\n",
-			s.ID, s.Name, s.ConsecutiveFailures, reason)
 		s.Deactivate()
+		evt.Kind = SourceFailureKindCircuitBreaker
 	} else {
 		backoffMinutes := backoffBaseMinutes * math.Pow(2, float64(s.ConsecutiveFailures-1))
 		if backoffMinutes > backoffMaxHours*60 {
@@ -151,11 +179,12 @@ func (s *Source) RecordFailure(reason string) {
 		}
 		nextRun := now.Add(time.Duration(backoffMinutes) * time.Minute)
 		s.NextRunAt = &nextRun
-		fmt.Printf("[backoff] source %s (%s) backoff de %.0f min (fallo #%d): %s\n",
-			s.ID, s.Name, backoffMinutes, s.ConsecutiveFailures, reason)
+		evt.Kind = SourceFailureKindBackoff
+		evt.BackoffMinutes = backoffMinutes
 	}
 
 	s.UpdatedAt = now
+	return evt
 }
 
 func (s *Source) recalculateHealthScore() {

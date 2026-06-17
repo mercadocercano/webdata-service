@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
@@ -11,6 +10,7 @@ import (
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
 	"github.com/mercadocercano/webdata-service/src/shared/database"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
 // EnrichGlobalProductsUseCase consulta PIM por productos incompletos y crea scraping jobs
@@ -19,6 +19,7 @@ type EnrichGlobalProductsUseCase struct {
 	pimSyncer  port.PIMCatalogSyncer
 	sourceRepo sourceport.SourceRepository
 	jobRepo    scrapingport.ScrapingJobRepository
+	logger     webdataport.WebdataEventLogger
 }
 
 func NewEnrichGlobalProductsUseCase(
@@ -30,6 +31,17 @@ func NewEnrichGlobalProductsUseCase(
 		pimSyncer:  pimSyncer,
 		sourceRepo: sourceRepo,
 		jobRepo:    jobRepo,
+	}
+}
+
+// WithLogger inyecta el logger canónico (ADR-001). Nil-safe.
+func (uc *EnrichGlobalProductsUseCase) WithLogger(logger webdataport.WebdataEventLogger) {
+	uc.logger = logger
+}
+
+func (uc *EnrichGlobalProductsUseCase) logEvt(e webdataport.WebdataEvent) {
+	if uc.logger != nil {
+		uc.logger.Log(e)
 	}
 }
 
@@ -80,7 +92,11 @@ func (uc *EnrichGlobalProductsUseCase) triggerSourcesForBusinessType(ctx context
 		IsActive: &isActive,
 	})
 	if err != nil {
-		log.Printf("[enrich] sources for %s: %v", businessType, err)
+		uc.logEvt(webdataport.WebdataEvent{
+			Event:        "webdata.enrichment_sources_failed",
+			BusinessType: businessType,
+			Reason:       err.Error(),
+		})
 		errs = append(errs, fmt.Sprintf("sources for %s: %v", businessType, err))
 		return
 	}
@@ -88,14 +104,31 @@ func (uc *EnrichGlobalProductsUseCase) triggerSourcesForBusinessType(ctx context
 	for _, source := range sources {
 		job, err := entity.NewScrapingJob(uuid.Nil, source.ID, "enrichment")
 		if err != nil {
-			log.Printf("[enrich] job creation for source %s: %v", source.ID, err)
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:        "webdata.enrichment_job_failed",
+				SourceID:     source.ID.String(),
+				BusinessType: businessType,
+				Reason:       fmt.Sprintf("create job: %v", err),
+			})
 			continue
 		}
 		if err := uc.jobRepo.Save(ctx, job); err != nil {
-			log.Printf("[enrich] saving job for source %s: %v", source.ID, err)
+			uc.logEvt(webdataport.WebdataEvent{
+				Event:        "webdata.enrichment_job_failed",
+				SourceID:     source.ID.String(),
+				BusinessType: businessType,
+				Reason:       fmt.Sprintf("save job: %v", err),
+			})
 			continue
 		}
 		created++
+	}
+	if created > 0 {
+		uc.logEvt(webdataport.WebdataEvent{
+			Event:        "webdata.enrichment_completed",
+			BusinessType: businessType,
+			JobsCreated:  created,
+		})
 	}
 	return
 }

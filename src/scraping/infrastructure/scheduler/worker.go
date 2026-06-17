@@ -2,11 +2,11 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/exception"
 	scrapingusecase "github.com/mercadocercano/webdata-service/src/scraping/application/usecase"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
 const workerPollInterval = 5 * time.Second
@@ -14,10 +14,22 @@ const workerPollInterval = 5 * time.Second
 type WorkerPool struct {
 	executeUC   *scrapingusecase.ExecuteScrapingUseCase
 	workerCount int
+	logger      webdataport.WebdataEventLogger
 }
 
 func NewWorkerPool(executeUC *scrapingusecase.ExecuteScrapingUseCase, workerCount int) *WorkerPool {
 	return &WorkerPool{executeUC: executeUC, workerCount: workerCount}
+}
+
+// WithLogger inyecta el logger canónico (ADR-001). Nil-safe.
+func (wp *WorkerPool) WithLogger(logger webdataport.WebdataEventLogger) {
+	wp.logger = logger
+}
+
+func (wp *WorkerPool) logEvt(e webdataport.WebdataEvent) {
+	if wp.logger != nil {
+		wp.logger.Log(e)
+	}
 }
 
 func (wp *WorkerPool) Start(ctx context.Context) {
@@ -41,12 +53,21 @@ func (wp *WorkerPool) runWorker(ctx context.Context, workerID int) {
 			job, err := wp.executeUC.ClaimJob(ctx)
 			if err != nil {
 				if _, ok := err.(exception.JobNotFoundError); !ok {
-					fmt.Printf("[worker %d] claim error: %v\n", workerID, err)
+					wp.logEvt(webdataport.WebdataEvent{
+						Event:  "webdata.worker_claim_error",
+						Reason: err.Error(),
+					})
 				}
 				continue
 			}
 			if err := wp.executeUC.Execute(ctx, job); err != nil {
-				fmt.Printf("[worker %d] execute error for job %s: %v\n", workerID, job.ID, err)
+				wp.logEvt(webdataport.WebdataEvent{
+					Event:    "webdata.worker_execute_error",
+					JobID:    job.ID.String(),
+					TenantID: job.TenantID.String(),
+					SourceID: job.SourceID.String(),
+					Reason:   err.Error(),
+				})
 			}
 		}
 	}

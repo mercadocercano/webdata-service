@@ -10,27 +10,39 @@ import (
 	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
 type ProductModule struct {
 	Repo       productport.ProductRepository
 	PIMSyncer  productport.PIMCatalogSyncer
 	UpsertUC   *productusecase.UpsertProductsUseCase
+	SyncUC     *productusecase.SyncProductToPIMUseCase
 	Controller *productcontroller.ProductController
+	logger     webdataport.WebdataEventLogger
 }
 
 // WireEnrichment inyecta el use case de enrichment una vez que sourceRepo y jobRepo están listos.
 func (m *ProductModule) WireEnrichment(sourceRepo sourceport.SourceRepository, jobRepo scrapingport.ScrapingJobRepository) {
 	enrichUC := productusecase.NewEnrichGlobalProductsUseCase(m.PIMSyncer, sourceRepo, jobRepo)
+	if m.logger != nil {
+		enrichUC.WithLogger(m.logger)
+	}
 	m.Controller.SetEnrichUseCase(enrichUC)
 }
 
-func NewProductModule(db *sql.DB) *ProductModule {
+func NewProductModule(db *sql.DB, logger webdataport.WebdataEventLogger) *ProductModule {
 	repo := productpersistence.NewPostgresProductRepository(db)
 	categoryFinder := productadapter.NewSourceCategoryAdapter(db)
 	upsertUC := productusecase.NewUpsertProductsUseCase(repo, categoryFinder)
+	if logger != nil {
+		upsertUC.WithLogger(logger)
+	}
 	pimSyncer := productadapter.NewPIMCatalogSyncerAdapter()
 	syncToPIMUC := productusecase.NewSyncProductToPIMUseCase(repo, pimSyncer)
+	if logger != nil {
+		syncToPIMUC.WithLogger(logger)
+	}
 	upsertUC.WithPIMSync(syncToPIMUC)
 	listUC := productusecase.NewListProductsUseCase(repo)
 	getUC := productusecase.NewGetProductUseCase(repo)
@@ -50,6 +62,8 @@ func NewProductModule(db *sql.DB) *ProductModule {
 		Repo:       repo,
 		PIMSyncer:  pimSyncer,
 		UpsertUC:   upsertUC,
+		SyncUC:     syncToPIMUC,
 		Controller: ctrl,
+		logger:     logger,
 	}
 }

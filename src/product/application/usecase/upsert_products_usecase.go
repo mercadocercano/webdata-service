@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/entity"
@@ -33,7 +34,7 @@ func (uc *UpsertProductsUseCase) Execute(
 	jobID *uuid.UUID,
 	rawProducts []scrapingport.RawProduct,
 ) (int, error) {
-	created, updated, err := uc.execute(ctx, tenantID, sourceID, jobID, rawProducts)
+	created, updated, err := uc.execute(ctx, tenantID, sourceID, jobID, rawProducts, nil)
 	return created + updated, err
 }
 
@@ -43,7 +44,19 @@ func (uc *UpsertProductsUseCase) ExecuteDetailed(
 	jobID *uuid.UUID,
 	rawProducts []scrapingport.RawProduct,
 ) (created, updated int, err error) {
-	return uc.execute(ctx, tenantID, sourceID, jobID, rawProducts)
+	return uc.execute(ctx, tenantID, sourceID, jobID, rawProducts, nil)
+}
+
+// ExecuteDetailedWithFilter aplica el filtro de marcas excluidas antes de persistir.
+// excludedBrands es el valor de source.ExcludedBrands resuelto por el caller.
+func (uc *UpsertProductsUseCase) ExecuteDetailedWithFilter(
+	ctx context.Context,
+	tenantID, sourceID uuid.UUID,
+	jobID *uuid.UUID,
+	rawProducts []scrapingport.RawProduct,
+	excludedBrands []string,
+) (created, updated int, err error) {
+	return uc.execute(ctx, tenantID, sourceID, jobID, rawProducts, excludedBrands)
 }
 
 func (uc *UpsertProductsUseCase) execute(
@@ -51,7 +64,35 @@ func (uc *UpsertProductsUseCase) execute(
 	tenantID, sourceID uuid.UUID,
 	jobID *uuid.UUID,
 	rawProducts []scrapingport.RawProduct,
+	excludedBrands []string,
 ) (created, updated int, err error) {
+	// Filter out products whose brand (normalized: trim + lower) matches any excluded brand.
+	if len(excludedBrands) > 0 {
+		normalized := make([]string, len(excludedBrands))
+		for i, b := range excludedBrands {
+			normalized[i] = strings.ToLower(strings.TrimSpace(b))
+		}
+		filtered := rawProducts[:0]
+		for _, raw := range rawProducts {
+			brandNorm := strings.ToLower(strings.TrimSpace(raw.Brand))
+			excluded := false
+			for _, eb := range normalized {
+				if brandNorm == eb {
+					excluded = true
+					break
+				}
+			}
+			if !excluded {
+				filtered = append(filtered, raw)
+			}
+		}
+		filteredCount := len(rawProducts) - len(filtered)
+		if filteredCount > 0 {
+			log.Printf("[upsert] filtered %d products by excluded_brands for source %s", filteredCount, sourceID)
+		}
+		rawProducts = filtered
+	}
+
 	// Resolve source category once for the entire batch.
 	var autoAssignment *value_object.BusinessTypeAssignment
 	if uc.categoryFinder != nil {

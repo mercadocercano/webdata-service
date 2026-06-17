@@ -13,6 +13,7 @@ type CreateSourceRequest struct {
 	FirecrawlMethod  string          `json:"firecrawl_method,omitempty"`
 	CronExpression   string          `json:"cron_expression,omitempty"`
 	Notes            string          `json:"notes,omitempty"`
+	ExcludedBrands   []string        `json:"excluded_brands,omitempty"`
 	ExtractionSchema json.RawMessage `json:"extraction_schema,omitempty"`
 	CrawlConfig      json.RawMessage `json:"crawl_config,omitempty"`
 }

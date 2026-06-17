@@ -28,11 +28,16 @@ type SourceResponse struct {
 	LastSuccessAt      *time.Time `json:"last_success_at,omitempty"`
 	LastFailureReason  string     `json:"last_failure_reason,omitempty"`
 	Notes              string     `json:"notes,omitempty"`
+	ExcludedBrands     []string   `json:"excluded_brands"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 func FromSource(s *entity.Source) SourceResponse {
+	excludedBrands := s.ExcludedBrands
+	if excludedBrands == nil {
+		excludedBrands = []string{}
+	}
 	return SourceResponse{
 		ID:                uuid.UUID(s.ID),
 		TenantID:          uuid.UUID(s.TenantID),
@@ -54,6 +59,7 @@ func FromSource(s *entity.Source) SourceResponse {
 		LastSuccessAt:     s.LastSuccessAt,
 		LastFailureReason: s.LastFailureReason,
 		Notes:             s.Notes,
+		ExcludedBrands:    excludedBrands,
 		CreatedAt:         s.CreatedAt,
 		UpdatedAt:         s.UpdatedAt,
 	}

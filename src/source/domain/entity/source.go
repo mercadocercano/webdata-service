@@ -41,6 +41,7 @@ type Source struct {
 	LastFailureReason  string
 	ConsecutiveFailures int
 	Notes              string
+	ExcludedBrands     []string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -57,6 +58,7 @@ type CreateSourceParams struct {
 	FirecrawlMethod  string
 	CronExpression   string
 	Notes            string
+	ExcludedBrands   []string
 	ExtractionSchema []byte
 	CrawlConfigRaw   []byte
 }
@@ -90,6 +92,11 @@ func NewSource(p CreateSourceParams) (*Source, error) {
 		method = "extract"
 	}
 
+	excludedBrands := p.ExcludedBrands
+	if excludedBrands == nil {
+		excludedBrands = []string{}
+	}
+
 	now := time.Now()
 	return &Source{
 		ID:              uuid.New(),
@@ -104,6 +111,7 @@ func NewSource(p CreateSourceParams) (*Source, error) {
 		FirecrawlMethod: method,
 		CronExpression:  p.CronExpression,
 		Notes:           p.Notes,
+		ExcludedBrands:  excludedBrands,
 		IsActive:        true,
 		HealthScore:     1.00,
 		CreatedAt:       now,

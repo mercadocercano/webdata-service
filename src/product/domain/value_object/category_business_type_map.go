@@ -7,43 +7,122 @@ type CategoryBusinessTypeMapping struct {
 }
 
 var categoryToBusinessType = map[string]CategoryBusinessTypeMapping{
-	// Alimentarios → almacen (código PIM: almacen)
+	// Almacén de Barrio → almacen
 	"supermercado":           {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"almacen":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
-	"lacteos":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
-	"limpieza":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
-	"bebidas":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"congelados":             {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"desayuno":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"golosinas":              {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"aceites":                {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"panaderia":              {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 	"snacks":                 {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
-	"bazar":                  {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
-	"mascotas":               {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	// Cordiez VTEX categories → almacen
+	"desayuno_merienda":      {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"kiosco_cordiez":         {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
 
-	// Mayoristas → supermercado (código PIM: supermercado)
+	// Vinoteca → vinoteca (E19: Cordiez Bebidas VTEX id=10001 → vinoteca, no almacen)
+	"bebidas":                {BusinessTypeCode: "vinoteca", BusinessTypeName: "Vinoteca"},
+
+	// Veterinaria y Mascotas → veterinaria (E19: Cordiez Mascotas VTEX id=10010 → veterinaria, no almacen)
+	"mascotas":               {BusinessTypeCode: "veterinaria", BusinessTypeName: "Veterinaria y Mascotas"},
+
+	// Fiambrería → fiambreria (E19: lácteos y fiambres/quesos van a fiambrería)
+	"lacteos":                {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	"fiambres_quesos":        {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+
+	// Kiosco → kiosco
+	"kiosco":                 {BusinessTypeCode: "kiosco", BusinessTypeName: "Kiosco"},
+
+	// Limpieza → limpieza (E19: limpieza_hogar y cuidado_ropa van a limpieza)
+	"limpieza":               {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	"limpieza_hogar":         {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	"cuidado_ropa":           {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+
+	// Bazar → bazar
+	"bazar":                  {BusinessTypeCode: "bazar", BusinessTypeName: "Bazar"},
+
+	// Mayoristas → supermercado
 	"supermercado_mayorista": {BusinessTypeCode: "supermercado", BusinessTypeName: "Supermercado"},
 
-	// Tecnología → electronica (código PIM: electronica)
-	"electronica":            {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
-	"electrodomesticos":      {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
-	"tecnologia":             {BusinessTypeCode: "electronica", BusinessTypeName: "Casa de Electrodomésticos"},
+	// Tecnología → electrodomesticos
+	"electronica":            {BusinessTypeCode: "electrodomesticos", BusinessTypeName: "Casa de Electrodomésticos"},
+	"electrodomesticos":      {BusinessTypeCode: "electrodomesticos", BusinessTypeName: "Casa de Electrodomésticos"},
+	"tecnologia":             {BusinessTypeCode: "electrodomesticos", BusinessTypeName: "Casa de Electrodomésticos"},
 
-	// Farmacia → farmacia (código PIM: farmacia)
+	// Farmacia → farmacia
 	"farmacia_perfumeria":    {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
 	"cuidado-personal":       {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+	"cuidado_personal":       {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
 	"bebes":                  {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
 
-	// Ferretería → ferreteria (código PIM: ferreteria)
+	// Perfumería → perfumeria
+	"perfumeria":             {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+
+	// Ferretería → ferreteria
 	"ferreteria_construccion": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
 	"construccion_hogar":      {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
 	"construccion_ferreteria": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
 	"sanitarios":              {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
 
-	// Indumentaria → ropa (código PIM: ropa)
+	// Indumentaria → ropa
 	"indumentaria":           {BusinessTypeCode: "ropa", BusinessTypeName: "Tienda de Ropa"},
 	"calzado":                {BusinessTypeCode: "ropa", BusinessTypeName: "Tienda de Ropa"},
+
+	// E22: Día (VTEX) — 8 categorías raíz con business_type por rubro real
+	"dia_almacen":      {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"dia_desayuno":     {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"dia_frescos":      {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	"dia_bebidas":      {BusinessTypeCode: "vinoteca", BusinessTypeName: "Vinoteca"},
+	"dia_congelados":   {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"dia_perfumeria":   {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	"dia_limpieza":     {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	"dia_mascotas":     {BusinessTypeCode: "veterinaria", BusinessTypeName: "Veterinaria y Mascotas"},
+
+	// E22: Carrefour (VTEX) — 9 categorías raíz con business_type por rubro real
+	"carr_almacen":    {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"carr_desayuno":   {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"carr_bebidas":    {BusinessTypeCode: "vinoteca", BusinessTypeName: "Vinoteca"},
+	"carr_lacteos":    {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	"carr_panaderia":  {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"carr_congelados": {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"carr_limpieza":   {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	"carr_farmacia":   {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+	"carr_mascotas":   {BusinessTypeCode: "veterinaria", BusinessTypeName: "Veterinaria y Mascotas"},
+
+	// E22: La Anónima / MasOnline (VTEX) — categorías granulares (117 nivel-1)
+	"anon_aceites_aderezos": {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"anon_arroz_pastas":     {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"anon_desayunos":        {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"anon_lacteos":          {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	"anon_fiambres":         {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	"anon_congelados":       {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	"anon_gaseosas":         {BusinessTypeCode: "vinoteca", BusinessTypeName: "Vinoteca"},
+	"anon_limpieza":         {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	"anon_farmacia":         {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+
+	// E22: Farmacity (VTEX) — farmacia/perfumería/cuidado personal
+	"farm_farmacia":         {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+	"farm_medicamentos":     {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+	"farm_cuidado_personal": {BusinessTypeCode: "farmacia", BusinessTypeName: "Farmacia"},
+	"farm_cuidado_piel":     {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	"farm_cuidado_capilar":  {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	"farm_perfumes":         {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	"farm_maquillaje":       {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	"farm_hogar_alimentos":  {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+
+	// Coop. Obrera (E21) — 6 categorías raíz con business_type por rubro real
+	// Almacén (id=2) → almacen (ya cubierto por "almacen" arriba)
+	"coop_almacen":           {BusinessTypeCode: "almacen", BusinessTypeName: "Almacén de Barrio"},
+	// Frescos (id=3) → fiambreria (lácteos, quesos, fiambres, embutidos)
+	"coop_frescos":           {BusinessTypeCode: "fiambreria", BusinessTypeName: "Fiambrería"},
+	// Bebidas (id=4) → vinoteca (igual que Cordiez Bebidas, E19)
+	"coop_bebidas":           {BusinessTypeCode: "vinoteca", BusinessTypeName: "Vinoteca"},
+	// Perfumería (id=5) → perfumeria (NOT farmacia — Coop la llama Perfumería)
+	"coop_perfumeria":        {BusinessTypeCode: "perfumeria", BusinessTypeName: "Perfumería"},
+	// Limpieza (id=6) → limpieza (productos de limpieza del hogar)
+	"coop_limpieza":          {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
+	// Casa y Jardín (id=7) → bazar (artículos del hogar, utensilios, decoración)
+	"coop_casa_jardin":       {BusinessTypeCode: "bazar", BusinessTypeName: "Bazar"},
 }
 
 // MapCategoryToBusinessType returns the business type assignment for a source category.

@@ -169,6 +169,13 @@ func TestResolveBusinessTypeFromProductCategory_NuevosRubros(t *testing.T) {
 		// Mermelada de fruta NO debe ir a verduleria (guard mermelada antes que fruta)
 		{name: "mermelada de fruta va a almacen", rawCategory: "Mermelada de Fruta", expectedCode: "almacen"},
 
+		// Congelados: TODO /Congelados/... gana sobre carne/fruta/crema (regla primera)
+		{name: "congelados pollo gana sobre carne", rawCategory: "/Congelados/Pollo/", expectedCode: "congelados"},
+		{name: "congelados frutas y vegetales gana sobre verduleria", rawCategory: "/Congelados/Frutas y vegetales congelados/", expectedCode: "congelados"},
+		{name: "congelados helados de crema gana sobre fiambreria", rawCategory: "/Congelados/Helados de crema/", expectedCode: "congelados"},
+		{name: "congelados pescados", rawCategory: "/Congelados/Pescados y mariscos/", expectedCode: "congelados"},
+		{name: "congelados plano", rawCategory: "Congelados", expectedCode: "congelados"},
+
 		// Veterinaria
 		{name: "alimento balanceado perro", rawCategory: "Alimento balanceado perro", expectedCode: "veterinaria"},
 		{name: "gato alimento", rawCategory: "Alimento para Gato", expectedCode: "veterinaria"},

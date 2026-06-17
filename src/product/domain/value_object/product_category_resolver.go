@@ -31,6 +31,14 @@ type productCategoryRule struct {
 //   - Specific rubros (panaderia, carniceria, verduleria, veterinaria, vinoteca, libreria,
 //     jugueteria, peluqueria, piletas, electricidad) go BEFORE the almacen catch-all block.
 var productCategoryRules = []productCategoryRule{
+	// --- Congelados (rubro propio) ---
+	// MUST be FIRST: decisión del owner = TODO "/Congelados/..." va a congelados,
+	// gane sobre fiambreria/carniceria/verduleria/vino (ej. "/Congelados/Helados de
+	// crema/" → congelados, no fiambreria; "/Congelados/Pollo/" → congelados, no
+	// carniceria). Ningún rubro no-congelado contiene el substring "congelado".
+	{keyword: "congelado", businessTypeCode: "congelados", businessTypeName: "Congelados"},
+	{keyword: "congelados", businessTypeCode: "congelados", businessTypeName: "Congelados"},
+
 	// --- Fiambrería (taxonomía: lácteos + fiambres/quesos van a fiambrería) ---
 	// Must be FIRST so "yogur con frutas" → fiambreria, not verduleria.
 	{keyword: "yogur", businessTypeCode: "fiambreria", businessTypeName: "Fiambrería y Rotisería"},

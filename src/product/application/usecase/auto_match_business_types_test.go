@@ -36,6 +36,7 @@ func defaultBusinessTypes() []port.BusinessType {
 		{Code: "farmacia", Name: "Farmacia"},
 		{Code: "perfumeria", Name: "Perfumería"},
 		{Code: "vinoteca", Name: "Vinoteca"},
+		{Code: "congelados", Name: "Congelados"},
 		{Code: "fiambreria", Name: "Fiambrería"},
 		{Code: "pescaderia", Name: "Pescadería"},
 		{Code: "veterinaria", Name: "Veterinaria"},
@@ -140,8 +141,9 @@ func TestAutoMatchBusinessTypes_NuevosRubrosCorrectos(t *testing.T) {
 	verdura := createTestProduct(tenantID, sourceID, "Tomate Redondo", "Verduras", "verduras")
 	mascota := createTestProduct(tenantID, sourceID, "Alimento perro adulto", "Mascotas", "mascotas")
 	pan := createTestProduct(tenantID, sourceID, "Pan de campo 1kg", "Panadería", "panaderia")
+	congelado := createTestProduct(tenantID, sourceID, "Hamburguesas congeladas x4", "Congelados", "congelados")
 
-	for _, p := range []*entity.ScrapedProduct{vino, carne, verdura, mascota, pan} {
+	for _, p := range []*entity.ScrapedProduct{vino, carne, verdura, mascota, pan, congelado} {
 		_, _ = repo.Upsert(context.Background(), p)
 	}
 
@@ -149,7 +151,7 @@ func TestAutoMatchBusinessTypes_NuevosRubrosCorrectos(t *testing.T) {
 	result, err := uc.Execute(context.Background(), tenantID, usecase.AutoMatchRequest{})
 
 	require.NoError(t, err)
-	assert.Equal(t, 5, result.MatchedCount)
+	assert.Equal(t, 6, result.MatchedCount)
 
 	proposalMap := make(map[uuid.UUID]usecase.AutoMatchProposal)
 	for _, p := range result.Proposals {
@@ -180,6 +182,11 @@ func TestAutoMatchBusinessTypes_NuevosRubrosCorrectos(t *testing.T) {
 	panProposal := proposalMap[pan.ID]
 	require.NotEmpty(t, panProposal.ProposedBusinessTypes)
 	assert.Equal(t, "panaderia", panProposal.ProposedBusinessTypes[0].Code, "panaderia debe proponer panaderia primero")
+
+	// congelados → congelados como primer candidato
+	congeladoProposal := proposalMap[congelado.ID]
+	require.NotEmpty(t, congeladoProposal.ProposedBusinessTypes)
+	assert.Equal(t, "congelados", congeladoProposal.ProposedBusinessTypes[0].Code, "congelados debe proponer congelados primero")
 }
 
 // T-009: Auto-match no aplica sin confirmacion del admin (endpoint solo retorna preview, no persiste)

@@ -70,7 +70,7 @@ var categoryMapping = map[string][]string{
 	"aguas":                 {"almacen", "kiosco"},
 	"jugos":                 {"almacen"},
 	"cervezas":              {"almacen"},
-	"congelados":            {"almacen"},
+	"congelados":            {"congelados"},
 	"cereales":              {"almacen"},
 	"legumbres":             {"almacen"},
 	"pastas":                {"almacen"},

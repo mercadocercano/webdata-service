@@ -3,12 +3,14 @@ package image
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/entity"
@@ -151,6 +153,12 @@ func (e *ReplicateEnhancer) checkPrediction(ctx context.Context, pollURL string)
 }
 
 func downloadURL(ctx context.Context, client *http.Client, rawURL string) ([]byte, error) {
+	// data URI (ej. imágenes sintéticas de gpt-image-1 que llegan como base64):
+	// decodificar in-memory en vez de hacer HTTP GET.
+	if strings.HasPrefix(rawURL, "data:") {
+		return decodeDataURI(rawURL)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating download request: %w", err)
@@ -167,4 +175,22 @@ func downloadURL(ctx context.Context, client *http.Client, rawURL string) ([]byt
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+// decodeDataURI decodifica un data URI "data:<mime>;base64,<datos>" a bytes.
+func decodeDataURI(uri string) ([]byte, error) {
+	idx := strings.Index(uri, ",")
+	if idx < 0 {
+		return nil, fmt.Errorf("data URI inválido: sin coma separadora")
+	}
+	meta, payload := uri[:idx], uri[idx+1:]
+	if !strings.Contains(meta, "base64") {
+		return nil, fmt.Errorf("data URI no-base64 no soportado")
+	}
+	// gpt-image-1 devuelve base64 estándar, pero algunos endpoints usan URL-safe
+	// (RFC 4648 §5 con - y _). Intentar estándar y caer a URL-safe defensivamente.
+	if b, err := base64.StdEncoding.DecodeString(payload); err == nil {
+		return b, nil
+	}
+	return base64.RawURLEncoding.DecodeString(payload)
 }

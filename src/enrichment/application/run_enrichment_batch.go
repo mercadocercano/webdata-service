@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mercadocercano/webdata-service/src/enrichment/domain/entity"
@@ -203,7 +204,17 @@ func (uc *RunEnrichmentBatchUseCase) findProductData(ctx context.Context, item p
 		return nil, fmt.Errorf("getting rejected URLs: %w", err)
 	}
 
+	// B2 — genéricos a granel (sin marca o vendidos por peso): las fuentes reales
+	// devuelven imágenes equivocadas que el guard de título no atrapa (ej. "Alitas
+	// de pollo" → "salsa para alitas de pollo"; "Aguja" → jeringa, por homonimia).
+	// Para estos se saltan las fuentes reales y se genera imagen sintética con DALL-E
+	// (decisión owner E16, 2026-06-18).
+	genericBulk := isGenericBulk(item)
+
 	for _, src := range uc.sources {
+		if genericBulk && src.SourceName() != entity.SourceDALLE {
+			continue
+		}
 		data, err := uc.fetchFromSource(ctx, src, item)
 		if err != nil {
 			// Source failed — try next source instead of aborting
@@ -213,6 +224,14 @@ func (uc *RunEnrichmentBatchUseCase) findProductData(ctx context.Context, item p
 			continue
 		}
 		if isRejectedURL(data.ImageURL, rejectedURLs) {
+			continue
+		}
+		// Guard de relevancia: las fuentes reales (ML/OFF/Firecrawl/Perplexity)
+		// pueden devolver imágenes equivocadas por keyword-match. Si el título no
+		// matchea el nombre del producto, se descarta y se sigue la cascada — los
+		// genéricos/ambiguos terminan cayendo a DALL-E. DALL-E es sintético (genera
+		// a partir del nombre, no hay título que validar) → exento del guard.
+		if data.Source != entity.SourceDALLE && data.Name != "" && !IsRelevantMatch(item.Name, data.Name) {
 			continue
 		}
 		return data, nil
@@ -229,6 +248,34 @@ func (uc *RunEnrichmentBatchUseCase) fetchFromSource(ctx context.Context, src po
 		return src.FindByNameWithContext(ctx, item.Name, item.Category, item.BusinessType)
 	}
 	return src.FindByName(ctx, item.Name)
+}
+
+// isGenericBulk clasifica el producto como B2 (genérico a granel) cuando NO tiene
+// EAN y además no tiene marca o se vende por peso/granel. Estos van directo a DALL-E.
+//
+// El EAN es la salvaguarda: con EAN la cascada usa FindByGTIN (match exacto), sin el
+// problema de keyword/homonimia de la búsqueda por nombre — así que un producto con
+// EAN nunca es "genérico" a estos efectos.
+func isGenericBulk(item port.NeedsEnrichmentItem) bool {
+	if strings.TrimSpace(item.EAN) != "" {
+		return false
+	}
+	if strings.TrimSpace(item.Brand) == "" {
+		return true
+	}
+	return isByWeightName(item.Name)
+}
+
+// isByWeightName detecta nombres de venta por peso/unidad/granel ("x kg", "x1kg",
+// "por kg", "granel", "x unidad", "docena").
+func isByWeightName(name string) bool {
+	n := strings.ToLower(name)
+	for _, p := range []string{"x kg", " kg", "xkg", "x1kg", "x 1 kg", "por kg", "granel", "x unidad", " docena"} {
+		if strings.Contains(n, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRejectedURL(imageURL string, rejectedURLs []string) bool {

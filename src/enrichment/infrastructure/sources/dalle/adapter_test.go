@@ -19,6 +19,29 @@ func buildDALLEResponse(imageURL string) map[string]interface{} {
 	}
 }
 
+// Path principal de gpt-image-1: devuelve b64_json → el adapter retorna un data URI.
+func TestDALLEGeneratorSource_B64JSON_ReturnsDataURI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]string{{"b64_json": "aG9sYQ=="}},
+		})
+	}))
+	defer server.Close()
+
+	adapter := dalle.NewDALLEGeneratorSourceWithURL(server.URL, "test-key")
+	result, err := adapter.FindByName(context.Background(), "Asado de tira")
+	if err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	if result == nil || result.ImageURL != "data:image/png;base64,aG9sYQ==" {
+		t.Errorf("esperaba data URI, got %+v", result)
+	}
+	if result.Source != entity.SourceDALLE {
+		t.Errorf("esperaba source dalle, got %q", result.Source)
+	}
+}
+
 func TestDALLEGeneratorSource_FindByName_GeneratesImage(t *testing.T) {
 	// Arrange
 	expectedURL := "https://oaidalleapiprodscus.blob.core.windows.net/private/img-abc123.png"

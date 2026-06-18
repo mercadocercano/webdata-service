@@ -19,19 +19,23 @@ import (
 // --- Mock source category finder ---
 
 type mockSourceCategoryFinder struct {
-	categories map[string]string // sourceID -> category
+	categories    map[string]string // sourceID -> category
+	authoritative map[string]bool   // sourceID -> authoritative_category
 }
 
 func newMockSourceCategoryFinder() *mockSourceCategoryFinder {
-	return &mockSourceCategoryFinder{categories: make(map[string]string)}
+	return &mockSourceCategoryFinder{
+		categories:    make(map[string]string),
+		authoritative: make(map[string]bool),
+	}
 }
 
-func (m *mockSourceCategoryFinder) FindCategoryBySourceID(_ context.Context, _, sourceID uuid.UUID) (string, error) {
+func (m *mockSourceCategoryFinder) FindCategoryBySourceID(_ context.Context, _, sourceID uuid.UUID) (string, bool, error) {
 	cat, ok := m.categories[sourceID.String()]
 	if !ok {
-		return "", errors.New("source not found")
+		return "", false, errors.New("source not found")
 	}
-	return cat, nil
+	return cat, m.authoritative[sourceID.String()], nil
 }
 
 // --- Mock product repo ---
@@ -460,6 +464,57 @@ func TestUpsertProductsUseCase_DoesNotOverwriteExistingBusinessTypes(t *testing.
 	for _, p := range repo.products {
 		assert.Len(t, p.BusinessTypes, 1, "existing business types should not be overwritten")
 		assert.Equal(t, "almacen", p.BusinessTypes[0].BusinessTypeCode)
+	}
+}
+
+// E26: fuente AUTORITATIVA (single-rubro) → el mapeo de la fuente manda y se saltea
+// el resolver por-producto. Un shampoo de mascota (cuya categoría resolvería a
+// perfumeria/peluqueria por keyword) debe quedar en veterinaria por ser Puppis.
+func TestUpsertProductsUseCase_AuthoritativeSource_SkipsPerProductResolver(t *testing.T) {
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "puppis_general" // → veterinaria
+	finder.authoritative[sourceID.String()] = true
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 100.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Shampoo para perros", URL: "https://puppis.com.ar/shampoo", Price: &price, Category: "/Higiene y Belleza/Shampoo/"},
+	}
+
+	_, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+	require.NoError(t, err)
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1)
+		assert.Equal(t, "veterinaria", p.BusinessTypes[0].BusinessTypeCode,
+			"fuente autoritativa debe usar el mapeo de la fuente, no el resolver por-producto")
+	}
+}
+
+// Contraste: la MISMA categoría per-producto con fuente NO autoritativa → el resolver
+// por-producto gana (shampoo → perfumeria), demostrando que el flag es lo que cambia.
+func TestUpsertProductsUseCase_NonAuthoritativeSource_UsesPerProductResolver(t *testing.T) {
+	repo := newMockProductRepo()
+	finder := newMockSourceCategoryFinder()
+	sourceID := uuid.New()
+	tenantID := uuid.New()
+	finder.categories[sourceID.String()] = "puppis_general" // → veterinaria (fallback)
+	finder.authoritative[sourceID.String()] = false
+
+	uc := usecase.NewUpsertProductsUseCase(repo, finder)
+	price := 100.0
+	raw := []scrapeport.RawProduct{
+		{Title: "Shampoo para perros", URL: "https://puppis.com.ar/shampoo", Price: &price, Category: "/Higiene y Belleza/Shampoo/"},
+	}
+
+	_, err := uc.Execute(context.Background(), tenantID, sourceID, nil, raw)
+	require.NoError(t, err)
+	for _, p := range repo.products {
+		require.Len(t, p.BusinessTypes, 1)
+		assert.Equal(t, "perfumeria", p.BusinessTypes[0].BusinessTypeCode,
+			"fuente no autoritativa debe usar el resolver por-producto (shampoo→perfumeria)")
 	}
 }
 

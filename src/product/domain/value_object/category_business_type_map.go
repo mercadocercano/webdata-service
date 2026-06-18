@@ -123,6 +123,42 @@ var categoryToBusinessType = map[string]CategoryBusinessTypeMapping{
 	"coop_limpieza":          {BusinessTypeCode: "limpieza", BusinessTypeName: "Limpieza"},
 	// Casa y Jardín (id=7) → bazar (artículos del hogar, utensilios, decoración)
 	"coop_casa_jardin":       {BusinessTypeCode: "bazar", BusinessTypeName: "Bazar"},
+
+	// ── E26: Easy (VTEX) — hogar/construcción, rubros del piloto ──
+	// IDs nivel-2 confirmados via /api/catalog_system/pub/category/tree/2 (2026-06-17).
+	// Ferretería (rubro núcleo del piloto):
+	"easy_ferreteria":     {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_herramientas":   {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_construccion":   {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_plomeria":       {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_aberturas":      {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_pisos":          {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_pinturas":       {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_banos_cocinas":  {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	// Electricidad:
+	"easy_electricidad":   {BusinessTypeCode: "electricidad", BusinessTypeName: "Electricidad"},
+	"easy_iluminacion":    {BusinessTypeCode: "electricidad", BusinessTypeName: "Electricidad"},
+	// Bazar:
+	"easy_bazar_deco":     {BusinessTypeCode: "bazar", BusinessTypeName: "Bazar"},
+	"easy_muebles":        {BusinessTypeCode: "bazar", BusinessTypeName: "Bazar"},
+	// Electrodomésticos:
+	"easy_electrodomesticos": {BusinessTypeCode: "electrodomesticos", BusinessTypeName: "Casa de Electrodomésticos"},
+	// Jardín y Aire Libre → piletas (particionado por subcategoría, cap VTEX 2500):
+	"easy_jardin":              {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_muebles_ext":  {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_parrillas":    {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_piletas":      {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_tiempolibre":  {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_camping":      {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_herramientas": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+	"easy_jardin_armados":      {BusinessTypeCode: "piletas", BusinessTypeName: "Piletas y Jardín"},
+	"easy_jardin_mascotas":     {BusinessTypeCode: "veterinaria", BusinessTypeName: "Veterinaria y Mascotas"},
+
+	// ── E26: Blaisten (VTEX) — baños, pisos, griferías, sanitarios → ferreteria ──
+	"blaisten_general": {BusinessTypeCode: "ferreteria", BusinessTypeName: "Ferretería"},
+
+	// ── E26: Puppis (VTEX) — alimento/accesorios mascotas → veterinaria ──
+	"puppis_general": {BusinessTypeCode: "veterinaria", BusinessTypeName: "Veterinaria y Mascotas"},
 }
 
 // MapCategoryToBusinessType returns the business type assignment for a source category.

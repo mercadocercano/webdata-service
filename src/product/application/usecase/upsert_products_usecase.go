@@ -111,9 +111,13 @@ func (uc *UpsertProductsUseCase) execute(
 	}
 
 	// Resolve source category once for the entire batch.
+	// authoritative=true → fuente dedicada de un solo rubro (Easy, Puppis, Blaisten):
+	// el mapeo de la fuente es la verdad y se saltea el resolver por-producto.
 	var autoAssignment *value_object.BusinessTypeAssignment
+	var authoritative bool
 	if uc.categoryFinder != nil {
-		if category, catErr := uc.categoryFinder.FindCategoryBySourceID(ctx, tenantID, sourceID); catErr == nil {
+		if category, auth, catErr := uc.categoryFinder.FindCategoryBySourceID(ctx, tenantID, sourceID); catErr == nil {
+			authoritative = auth
 			if assignment, ok := value_object.MapCategoryToBusinessType(category); ok {
 				autoAssignment = &assignment
 			}
@@ -197,20 +201,25 @@ func (uc *UpsertProductsUseCase) execute(
 
 		if _, upsertErr := uc.repo.Upsert(ctx, product); upsertErr == nil {
 			created++
-			// Resolve business type per-product from its own category first;
-			// fall back to the source-level autoAssignment when the per-product
-			// resolver finds no match.
+			// Resolve business type. Para fuentes AUTORITATIVAS (single-rubro) el mapeo
+			// de la fuente manda y se saltea el resolver por-producto (evita ruido como
+			// "shampoo de perro → peluqueria"). Para el resto: resolver por-producto
+			// primero, con fallback al mapeo de la fuente.
 			var assignmentToApply *value_object.BusinessTypeAssignment
-			if perProduct, ok := value_object.ResolveBusinessTypeFromProductCategory(raw.Category); ok {
+			if authoritative && autoAssignment != nil {
+				assignmentToApply = autoAssignment
+			} else if perProduct, ok := value_object.ResolveBusinessTypeFromProductCategory(raw.Category); ok {
 				assignmentToApply = &perProduct
+			} else if autoAssignment != nil {
+				assignmentToApply = autoAssignment
+			}
+			if assignmentToApply != nil {
 				uc.log(webdataport.WebdataEvent{
 					Event:        "webdata.product_business_type_assigned",
 					TenantID:     tenantID.String(),
 					SourceID:     sourceID.String(),
-					BusinessType: perProduct.BusinessTypeCode,
+					BusinessType: assignmentToApply.BusinessTypeCode,
 				})
-			} else if autoAssignment != nil {
-				assignmentToApply = autoAssignment
 			}
 			if assignmentToApply != nil {
 				assignments := []value_object.BusinessTypeAssignment{*assignmentToApply}

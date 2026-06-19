@@ -50,6 +50,10 @@ func (s *spyScraper) CrawlStatus(_ context.Context, _ string) (scrapeport.CrawlR
 	return scrapeport.CrawlResult{}, nil
 }
 
+func (s *spyScraper) FetchHTTPJSON(_ context.Context, _ string, _ scrapeport.HTTPJSONOptions) ([]scrapeport.RawProduct, error) {
+	return s.products, nil
+}
+
 // --- Mock product repo (sin-op para los tests de scraping) ---
 
 type noopProductRepo struct{}
@@ -309,6 +313,12 @@ func (s *urlCaptureScraper) Crawl(_ context.Context, _ string, _ scrapeport.Craw
 }
 func (s *urlCaptureScraper) CrawlStatus(_ context.Context, _ string) (scrapeport.CrawlResult, error) {
 	return scrapeport.CrawlResult{}, nil
+}
+func (s *urlCaptureScraper) FetchHTTPJSON(_ context.Context, url string, _ scrapeport.HTTPJSONOptions) ([]scrapeport.RawProduct, error) {
+	if s.captureURL != nil {
+		s.captureURL(url)
+	}
+	return s.products, nil
 }
 
 // --- T-SCR-B06: Execute uses RecordJobResult (atomic) instead of full Update for source ---

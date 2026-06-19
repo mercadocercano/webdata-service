@@ -66,11 +66,16 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 		return err
 	}
 
-	// Fill missing product URLs with the source's base URL as a fallback.
-	// Extraction schemas may not always include individual product page URLs.
+	// Fill missing product URLs and categories with source-level fallbacks.
+	// - URL: extraction schemas may not always include individual product page URLs.
+	// - Category: JSON-native adapters (e.g. Coop. Obrera) don't embed a per-product
+	//   category; use the source's category so IsReadyForPIMSync passes.
 	for i := range rawProducts {
 		if rawProducts[i].URL == "" {
 			rawProducts[i].URL = source.BaseURL
+		}
+		if rawProducts[i].Category == "" && source.Category != "" {
+			rawProducts[i].Category = source.Category
 		}
 	}
 
@@ -89,8 +94,11 @@ func (uc *ExecuteScrapingUseCase) Execute(ctx context.Context, job *entity.Scrap
 	return upsertErr
 }
 
-// fetchProducts dispatches to Extract, Scrape, or Crawl based on the source's FirecrawlMethod.
-// The targetURL may include pagination query params when the job targets a specific page.
+// fetchProducts dispatches to Extract, Scrape, Crawl, or FetchHTTPJSON based
+// on the source's FirecrawlMethod. The targetURL may include pagination query
+// params when the job targets a specific page (page-number style, used by
+// extract/scrape). For http_json the adapter handles range-based pagination
+// internally — targetURL is passed as-is (i.e. source.BaseURL).
 func (uc *ExecuteScrapingUseCase) fetchProducts(ctx context.Context, source *sourceentity.Source, targetURL string) ([]scrapingport.RawProduct, error) {
 	switch source.FirecrawlMethod {
 	case "extract", "":
@@ -102,6 +110,19 @@ func (uc *ExecuteScrapingUseCase) fetchProducts(ctx context.Context, source *sou
 		return uc.scraper.ScrapeJSON(ctx, targetURL, source.ExtractionSchema.Raw(), scrapingport.ExtractOptions{
 			Prompt: source.Prompt,
 		})
+
+	case "http_json":
+		// Direct HTTP-JSON fetch (e.g. VTEX catalog API, Coop. Obrera).
+		// Pagination and request shape are controlled by CrawlConfig fields.
+		// source.BaseURL is used directly — job.Page / BuildPaginatedURL are NOT used.
+		opts := scrapingport.HTTPJSONOptions{
+			HTTPMethod:          source.CrawlConfig.HTTPMethod,
+			RequestBodyTemplate: source.CrawlConfig.RequestBodyTemplate,
+			CategoryID:          source.CrawlConfig.CategoryID,
+			ItemsJSONPath:       source.CrawlConfig.ItemsJSONPath,
+			PaginationStrategy:  string(source.CrawlConfig.PaginationStrategy),
+		}
+		return uc.scraper.FetchHTTPJSON(ctx, source.BaseURL, opts)
 
 	case "crawl":
 		// Async crawl polling + product extraction is not yet implemented.

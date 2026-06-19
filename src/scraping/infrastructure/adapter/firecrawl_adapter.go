@@ -20,12 +20,18 @@ const (
 	extractPollInterval = 5 * time.Second
 )
 
+// FirecrawlAdapter implements ScraperPort.
+// It delegates Firecrawl operations (Extract, ScrapeJSON, Scrape, Crawl) to
+// the Firecrawl API, and FetchHTTPJSON to the embedded VTEXAdapter (GET+range)
+// or CoopObreraAdapter (POST+page_increment) based on opts.PaginationStrategy.
 type FirecrawlAdapter struct {
 	apiKey       string
 	baseURL      string
 	httpClient   *http.Client
 	pollInterval time.Duration
 	pollTimeout  time.Duration
+	vtex         *VTEXAdapter
+	coop         *CoopObreraAdapter
 }
 
 func parseDurationEnv(key string, defaultVal time.Duration) time.Duration {
@@ -58,7 +64,20 @@ func NewFirecrawlAdapter(apiKey string) *FirecrawlAdapter {
 			// responds; if the HTTP client times out first the request fails silently).
 			Timeout: parseDurationEnv("FIRECRAWL_SCRAPE_TIMEOUT", 180*time.Second),
 		},
+		vtex: NewVTEXAdapter(),
+		coop: NewCoopObreraAdapter(),
 	}
+}
+
+// FetchHTTPJSON dispatches to the appropriate sub-adapter based on
+// opts.PaginationStrategy. No Firecrawl API key is required for this path.
+//   - "page_increment" → CoopObreraAdapter (POST + pagina 0,1,2... until empty)
+//   - "" or "range"   → VTEXAdapter (GET + _from/_to range, default)
+func (a *FirecrawlAdapter) FetchHTTPJSON(ctx context.Context, baseURL string, opts scrapingport.HTTPJSONOptions) ([]scrapingport.RawProduct, error) {
+	if opts.PaginationStrategy == "page_increment" {
+		return a.coop.FetchHTTPJSON(ctx, baseURL, opts)
+	}
+	return a.vtex.FetchHTTPJSON(ctx, baseURL, opts)
 }
 
 // newFirecrawlAdapterWithBaseURL creates an adapter with a custom base URL and poll interval.
@@ -72,6 +91,8 @@ func newFirecrawlAdapterWithBaseURL(apiKey, baseURL string) *FirecrawlAdapter {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		vtex: NewVTEXAdapter(),
+		coop: NewCoopObreraAdapter(),
 	}
 }
 

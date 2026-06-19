@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -145,12 +146,13 @@ func (a *PIMCatalogSyncerAdapter) Create(ctx context.Context, tenantID uuid.UUID
 	}
 	defer resp.Body.Close()
 
+	respBodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pim-service returned status %d on create", resp.StatusCode)
+		return nil, fmt.Errorf("pim-service returned status %d on create: %s", resp.StatusCode, string(respBodyBytes))
 	}
 
 	var body pimGlobalProductResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(respBodyBytes)).Decode(&body); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	return body.Data, nil

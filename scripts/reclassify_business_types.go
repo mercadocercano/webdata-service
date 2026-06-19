@@ -1,5 +1,23 @@
 //go:build ignore
 
+// ============================================================================
+// DEPRECADO (E24/PR-5, 2026-06-17) — NO USAR EN APPLY.
+//
+// Este script one-off fue SUPERADO por el endpoint de primera clase:
+//
+//	POST /pim/api/v1/s2s/global-products/reclassify-business-types
+//	(pim-service · vía Kong route pim-s2s-reclassify-route · key-auth X-API-Key)
+//
+// El endpoint aporta todo lo que este script NO tiene y que el gate L4 exige:
+// dry_run + resumen por rubro, snapshot+rollback transaccional, audit inmutable
+// (global_product_reclassification_audit), X-Operator-Id obligatorio en apply,
+// rate-limiting redis fail-closed y auth S2S. Correr este script con --apply
+// bypassa TODO eso contra el catálogo global — por eso queda bloqueado.
+//
+// El --apply de este script está deshabilitado. Se conserva SOLO como referencia
+// y para dry-run local. Para reclasificar de verdad, usar el endpoint.
+// ============================================================================
+//
 // reclassify_business_types re-clasifica el business_type del catálogo global ya
 // sincronizado (pim_db.global_products) reutilizando el resolver de webdata
 // (única fuente de verdad: value_object.ResolveBusinessTypeFromProductCategory).
@@ -8,7 +26,7 @@
 //   - RELLENO:    business_type vacío/null  → resolver(category) si resuelve.
 //   - CORRECCIÓN: business_type == 'almacen' y resolver(category) != 'almacen' → mover.
 //   - SKIP:       ya en un rubro específico (≠ almacen, ≠ vacío); o resolver no resuelve;
-//                 o resuelve a lo mismo; o colisión UNIQUE(name, business_type).
+//     o resuelve a lo mismo; o colisión UNIQUE(name, business_type).
 //
 // DRY-RUN por defecto. Aplica con --apply.
 //
@@ -33,16 +51,23 @@ import (
 )
 
 type change struct {
-	id      string
-	name    string
-	from    string // "" = vacío
-	to      string
-	kind    string // "relleno" | "correccion"
+	id   string
+	name string
+	from string // "" = vacío
+	to   string
+	kind string // "relleno" | "correccion"
 }
 
 func main() {
-	apply := flag.Bool("apply", false, "aplica los cambios (por defecto: dry-run)")
+	apply := flag.Bool("apply", false, "DEPRECADO: deshabilitado. Usar el endpoint POST /pim/api/v1/s2s/global-products/reclassify-business-types")
 	flag.Parse()
+
+	if *apply {
+		fmt.Fprintln(os.Stderr, "DEPRECADO (E24/PR-5): el --apply de este script está deshabilitado.")
+		fmt.Fprintln(os.Stderr, "Usar el endpoint: POST /pim/api/v1/s2s/global-products/reclassify-business-types")
+		fmt.Fprintln(os.Stderr, "(snapshot+rollback, audit, X-Operator-Id, rate-limit y auth S2S). Dry-run local: correr sin --apply.")
+		os.Exit(2)
+	}
 
 	db, err := postgres.Connect(postgres.Config{
 		Host:     getEnv("DB_HOST", "lab-postgres"),
@@ -75,10 +100,10 @@ func main() {
 
 	var changes []change
 	var (
-		total              int
-		skipNoResuelve     int
-		skipYaEspecifico   int
-		skipMismo          int
+		total            int
+		skipNoResuelve   int
+		skipYaEspecifico int
+		skipMismo        int
 	)
 	for rows.Next() {
 		var id, name, category, current string

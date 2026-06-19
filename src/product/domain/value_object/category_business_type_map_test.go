@@ -14,17 +14,37 @@ func TestMapCategoryToBusinessType_AllKnownCategories(t *testing.T) {
 		expectedCode     string
 		expectedName     string
 	}{
+		// Almacén de Barrio
 		{"supermercado", "almacen", "Almacén de Barrio"},
 		{"almacen", "almacen", "Almacén de Barrio"},
+		{"desayuno_merienda", "almacen", "Almacén de Barrio"},
+		// Vinoteca — E19 cierre: Cordiez Bebidas (VTEX id=10001) → vinoteca
+		{"bebidas", "vinoteca", "Vinoteca"},
+		// Veterinaria y Mascotas — E19 cierre: Cordiez Mascotas (VTEX id=10010) → veterinaria
+		{"mascotas", "veterinaria", "Veterinaria y Mascotas"},
+		// Fiambrería — E19: lácteos y fiambres/quesos Cordiez van a fiambrería
+		{"lacteos", "fiambreria", "Fiambrería"},
+		{"fiambres_quesos", "fiambreria", "Fiambrería"},
+		// Limpieza — E19: limpieza_hogar y cuidado_ropa Cordiez van a limpieza
+		{"limpieza", "limpieza", "Limpieza"},
+		{"limpieza_hogar", "limpieza", "Limpieza"},
+		{"cuidado_ropa", "limpieza", "Limpieza"},
+		// Kiosco
+		{"kiosco", "kiosco", "Kiosco"},
+		// Mayoristas
 		{"supermercado_mayorista", "supermercado", "Supermercado"},
-		{"electronica", "electronica", "Casa de Electrodomésticos"},
+		// Tecnología
+		{"electronica", "electrodomesticos", "Casa de Electrodomésticos"},
+		// Farmacia
 		{"farmacia_perfumeria", "farmacia", "Farmacia"},
+		{"cuidado-personal", "farmacia", "Farmacia"},
+		{"cuidado_personal", "farmacia", "Farmacia"},
+		// Ferretería
 		{"ferreteria_construccion", "ferreteria", "Ferretería"},
 		{"construccion_hogar", "ferreteria", "Ferretería"},
+		// Ropa
 		{"indumentaria", "ropa", "Tienda de Ropa"},
 		{"calzado", "ropa", "Tienda de Ropa"},
-		{"lacteos", "almacen", "Almacén de Barrio"},
-		{"cuidado-personal", "farmacia", "Farmacia"},
 	}
 
 	for _, tc := range cases {

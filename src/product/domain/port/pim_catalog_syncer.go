@@ -50,6 +50,10 @@ type CreatePIMProductRequest struct {
 type UpdatePIMProductRequest struct {
 	Price    *float64 `json:"price,omitempty"`
 	ImageURL string   `json:"image_url,omitempty"`
+	// BusinessType es un CANDIDATE no autoritativo (E25 / ADR-006): webdata propone el
+	// rubro resuelto en cada re-sync, pero la política de corrección segura §8 la decide
+	// el PIM (dueño del dato). Vacío = "sin candidate" → el PIM no toca el business_type.
+	BusinessType string `json:"business_type,omitempty"`
 }
 
 type PIMCatalogSyncer interface {

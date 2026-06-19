@@ -66,6 +66,9 @@ func (uc *SyncProductToPIMUseCase) updateExisting(ctx context.Context, product *
 	req := port.UpdatePIMProductRequest{
 		Price:    product.Price,
 		ImageURL: product.ImageURL,
+		// E25 / ADR-006: propagar el business_type resuelto como candidate. El mismo valor
+		// que ya usa createNew; el PIM aplica la política §8 (rellena/corrige/skip).
+		BusinessType: primaryBusinessType(product),
 	}
 	if err := uc.syncer.Update(ctx, product.TenantID, existing.ID, req); err != nil {
 		return fmt.Errorf("updating PIM product: %w", err)

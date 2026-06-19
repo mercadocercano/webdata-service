@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	webdata "github.com/mercadocercano/webdata-service"
 	"github.com/mercadocercano/webdata-service/src/api"
 	enrichconfig "github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/config"
 	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
@@ -22,6 +23,7 @@ import (
 	webdatalogging "github.com/mercadocercano/webdata-service/src/webdata/infrastructure/logging"
 
 	"github.com/hornosg/go-shared/infrastructure/postgres"
+	sharedmigrate "github.com/hornosg/go-shared/migrate"
 )
 
 func main() {
@@ -44,6 +46,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// Run migrations before starting the server (fail-fast per ADR-001).
+	if err := sharedmigrate.RunMigrations(db, webdata.MigrationsFS, dbName); err != nil {
+		fmt.Fprintf(os.Stderr, "migrations failed: %v\n", err)
+		os.Exit(1)
+	}
 
 	postgres.StartPoolMonitor(context.Background(), db, postgres.MonitorOptions{
 		Service: "webdata-service",

@@ -58,18 +58,6 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: Build and Push migrate image (linux/amd64)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64
-          target: migrate
-          provenance: false
-          sbom: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }}
-
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
@@ -83,38 +71,6 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           DROPLET_IP: ${{ secrets.DROPLET_IP }}
-
-      - name: Run migrate job
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no deploy@${{ secrets.DROPLET_IP }} \
-            "export KUBECONFIG=/home/deploy/.kube/config && \
-             kubectl delete job webdata-migrate --ignore-not-found && \
-             kubectl run webdata-migrate-${{ github.sha }} \
-               --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }} \
-               --restart=Never \
-               --overrides='{
-                 \"spec\": {
-                   \"imagePullSecrets\": [{\"name\": \"do-registry\"}],
-                   \"containers\": [{
-                     \"name\": \"webdata-migrate\",
-                     \"image\": \"${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate:${{ github.sha }}\",
-                     \"imagePullPolicy\": \"Always\",
-                     \"command\": [\"sh\",\"-c\",\"for f in \$(ls /app/migrations/*.up.sql | sort); do echo Applying \$f && PGPASSWORD=postgres psql -h postgres -p 5432 -U postgres -d webdata_db -f \\"\$f\\" || exit 1; done && echo Done\"],
-                     \"env\": [
-                       {\"name\":\"POSTGRES_HOST\",\"value\":\"postgres\"},
-                       {\"name\":\"POSTGRES_PORT\",\"value\":\"5432\"},
-                       {\"name\":\"POSTGRES_USER\",\"value\":\"postgres\"},
-                       {\"name\":\"POSTGRES_PASSWORD\",\"value\":\"postgres\"},
-                       {\"name\":\"POSTGRES_DB\",\"value\":\"webdata_db\"}
-                     ]
-                   }]
-                 }
-               }' && \
-             kubectl wait pod/webdata-migrate-${{ github.sha }} \
-               --for=condition=Ready --timeout=30s 2>/dev/null || true && \
-             kubectl wait pod/webdata-migrate-${{ github.sha }} \
-               --for=jsonpath=.status.phase=Succeeded --timeout=120s || \
-             (kubectl logs webdata-migrate-${{ github.sha }} 2>/dev/null; exit 1)"
 
       - name: Deploy to K8s with rollback
         run: |

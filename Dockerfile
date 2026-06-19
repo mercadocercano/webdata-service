@@ -52,15 +52,7 @@ EXPOSE 8150 2114
 
 CMD sh -c 'if [ -n "$GITHUB_TOKEN" ]; then git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"; fi && air -c .air.toml'
 
-# Stage 4: Migrate
-FROM alpine:3.18 AS migrate
-
-RUN apk add --no-cache postgresql-client
-
-WORKDIR /app
-COPY --from=builder /app/migrations ./migrations
-
-# Stage 5: Production
+# Stage 4: Production
 FROM gcr.io/distroless/static-debian12:nonroot AS production
 
 LABEL org.opencontainers.image.title="webdata-service" \

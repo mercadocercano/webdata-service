@@ -6,8 +6,9 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
-	github.com/hornosg/go-shared v0.13.0
+	github.com/hornosg/go-shared v0.14.0
 	github.com/lib/pq v1.10.9
+	github.com/mercadocercano/go-shared-mc v0.1.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0

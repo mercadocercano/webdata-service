@@ -14,14 +14,14 @@ package value_object
 // hacerse en libs/go-shared/domain/businesstype/resolver.go.
 
 import (
-	"github.com/hornosg/go-shared/domain/businesstype"
+	"github.com/mercadocercano/go-shared-mc/domain/businesstype"
 )
 
 // ResolveBusinessTypeFromProductCategory delega al resolver compartido de go-shared.
 // Retorna (BusinessTypeAssignment, true) si la categoría matchea una regla conocida,
 // (zero, false) en caso contrario.
 //
-// Ver github.com/hornosg/go-shared/domain/businesstype para la tabla de reglas
+// Ver github.com/mercadocercano/go-shared-mc/domain/businesstype para la tabla de reglas
 // y la documentación de comportamiento (orden load-bearing, guards de colisión).
 func ResolveBusinessTypeFromProductCategory(rawCategory string) (BusinessTypeAssignment, bool) {
 	sharedAssignment, ok := businesstype.ResolveBusinessTypeFromProductCategory(rawCategory)

@@ -3,10 +3,12 @@
 # ==============================================
 
 # Stage 1: Dependencies
-FROM golang:1.25-alpine AS deps
+FROM golang:1.25-bookworm AS deps
 WORKDIR /app
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 ARG GITHUB_TOKEN
 ENV GOPRIVATE=github.com/mercadocercano/*
@@ -27,7 +29,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o webdata-service ./cmd/api/main.go
 
 # Stage 3: Development (with Air hot reload)
-FROM mercado-cercano/go-dev:1.24 AS development
+FROM mercado-cercano/go-dev:1.25 AS development
 
 WORKDIR /app
 

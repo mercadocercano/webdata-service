@@ -1,9 +1,19 @@
+# ⚠️ DEPLOY AUTOMÁTICO DESACTIVADO — decisión del owner, 2026-09-13.
+#
+# El droplet de DigitalOcean está APAGADO: este workflow fallaría en el paso de SSH. El despliegue
+# se retoma en PLAT-H2 (k3d local → producción en DonWeb), con otro destino y sus manifiestos.
+#
+# Se quitó el trigger `push`: un push a master ya no despliega nada. Queda `workflow_dispatch` para
+# correrlo a mano el día que haya adónde desplegar. Se saca del archivo y no sólo con
+# `gh workflow disable` porque ese candado se revierte con un click, y entonces el primer push a
+# master volvería a desplegar solo. Mismo criterio que iam-service y stock-service.
+#
+# Esto es lo que permite volver a pushear estos repos sin apagarles el git (D-11).
+
 name: Deploy webdata-service to Production
 
 on:
-  push:
-    branches: [main]
-
+  workflow_dispatch:
 env:
   REGISTRY: registry.digitalocean.com/mc-bootstrap-registry
   IMAGE_NAME: webdata-service

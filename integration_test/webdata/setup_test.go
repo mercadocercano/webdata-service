@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/mercadocercano/webdata-service/src/shared/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,12 +32,12 @@ import (
 
 	"github.com/mercadocercano/webdata-service/src/api"
 	enrichconfig "github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/config"
-	scraperadapter "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/adapter"
-	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
+	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
 	productcontroller "github.com/mercadocercano/webdata-service/src/product/infrastructure/controller"
-	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
+	scraperadapter "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/adapter"
+	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
 )
@@ -92,6 +93,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	runMigrations(t, db)
 
 	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_PUBLIC_KEY_DIR", testsupport.KeyringDir())
 
 	productModule := productconfig.NewProductModule(db)
 	sourceModule := sourceconfig.NewSourceModule(db, nil)
@@ -131,8 +133,7 @@ func makeJWT(t *testing.T, tenantID uuid.UUID) string {
 		"role":      "admin",
 		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testJWTSecret))
+	signed, err := testsupport.NewRS256Token(claims).SignedString(testsupport.PrivateKey())
 	require.NoError(t, err)
 	return signed
 }

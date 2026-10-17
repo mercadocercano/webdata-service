@@ -3,9 +3,10 @@
 // TEST-ID: T-INT-06
 // Product controller E2E integration test.
 // Seeds a source + products via UpsertProductsUseCase, then exercises:
-//   GET /api/v1/products/
-//   GET /api/v1/products/:id
-//   GET /api/v1/products/:id/price-history
+//
+//	GET /api/v1/products/
+//	GET /api/v1/products/:id
+//	GET /api/v1/products/:id/price-history
 //
 // Requires a running PostgreSQL with migrated webdata schema.
 // Set WEBDATA_TEST_DB_URL or individual DB_* env vars.
@@ -18,6 +19,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/mercadocercano/webdata-service/src/shared/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,13 +30,13 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/mercadocercano/webdata-service/src/api"
+	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
+	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
+	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/adapter"
 	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
-	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
-	scrapeport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
-	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,6 +73,7 @@ type testModules struct {
 func newTestModules(t *testing.T, db *sql.DB) testModules {
 	t.Helper()
 	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_PUBLIC_KEY_DIR", testsupport.KeyringDir())
 
 	productModule := productconfig.NewProductModule(db)
 	sourceModule := sourceconfig.NewSourceModule(db, nil)
@@ -98,8 +101,7 @@ func makeTestJWT(t *testing.T, tenantID uuid.UUID) string {
 		"role":      "admin",
 		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testJWTSecret))
+	signed, err := testsupport.NewRS256Token(claims).SignedString(testsupport.PrivateKey())
 	require.NoError(t, err)
 	return signed
 }

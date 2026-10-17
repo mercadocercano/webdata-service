@@ -104,11 +104,13 @@ func TestAuthMiddlewareDual_RS256Valido_PasaYPueblaClaims(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareDual_HS256Legacy_SigueAceptado(t *testing.T) {
+// ACC-E03 T6: terminada la ventana dual, un HS256 firmado con el JWT_SECRET que sigue en el
+// entorno (el de la flota) se rechaza — la raíz de confianza ya no se comparte.
+func TestAuthMiddleware_T6_HS256ConElSecretoRechazado(t *testing.T) {
 	key := dualKey(t)
 	h := dualMux(t, &key.PublicKey)
-	if w := dualDo(h, dualSign(t, jwt.SigningMethodHS256, []byte(testSecret), "")); w.Code != http.StatusOK {
-		t.Fatalf("HS256 legacy durante la ventana dual: code=%d", w.Code)
+	if w := dualDo(h, dualSign(t, jwt.SigningMethodHS256, []byte(testSecret), "")); w.Code != http.StatusUnauthorized {
+		t.Fatalf("HS256 con el secreto de la flota tras el corte: code=%d, se espera 401", w.Code)
 	}
 }
 

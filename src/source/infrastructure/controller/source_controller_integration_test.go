@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/mercadocercano/webdata-service/src/shared/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,9 +24,9 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/mercadocercano/webdata-service/src/api"
+	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/adapter"
 	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
-	productconfig "github.com/mercadocercano/webdata-service/src/product/infrastructure/config"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
 	"github.com/stretchr/testify/assert"
@@ -59,6 +60,7 @@ func testDB(t *testing.T) *sql.DB {
 func newTestServer(t *testing.T, db *sql.DB) *httptest.Server {
 	t.Helper()
 	t.Setenv("JWT_SECRET", testJWTSecret)
+	t.Setenv("JWT_PUBLIC_KEY_DIR", testsupport.KeyringDir())
 
 	productModule := productconfig.NewProductModule(db)
 	sourceModule := sourceconfig.NewSourceModule(db, nil)
@@ -86,8 +88,7 @@ func makeTestJWT(t *testing.T, tenantID uuid.UUID) string {
 		"role":      "admin",
 		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(testJWTSecret))
+	signed, err := testsupport.NewRS256Token(claims).SignedString(testsupport.PrivateKey())
 	require.NoError(t, err)
 	return signed
 }

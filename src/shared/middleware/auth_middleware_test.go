@@ -2,6 +2,9 @@ package middleware
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"github.com/mercadocercano/webdata-service/src/shared/testsupport"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +28,7 @@ const testSecret = "t9c1-test-secret-min-32-chars-long-xxxx"
 func newAdminMux(t *testing.T, reached *bool) http.Handler {
 	t.Helper()
 	t.Setenv("JWT_SECRET", testSecret)
+	t.Setenv("JWT_PUBLIC_KEY_DIR", testsupport.KeyringDir())
 	r := chi.NewRouter()
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(AuthMiddleware)
@@ -54,7 +58,7 @@ func newAdminMux(t *testing.T, reached *bool) http.Handler {
 	return r
 }
 
-// mintToken firma un JWT HS256 con los claims dados. Si withExp es false, omite `exp`
+// mintToken firma un JWT RS256 (fixture de testsupport; desde ACC-E03 T6 HS256 se rechaza) con los claims dados. Si withExp es false, omite `exp`
 // para ejercitar WithExpirationRequired (la llave maestra eterna que T1f cerró).
 func mintToken(t *testing.T, roles []string, withExp bool, tenantID uuid.UUID) string {
 	t.Helper()
@@ -69,8 +73,7 @@ func mintToken(t *testing.T, roles []string, withExp bool, tenantID uuid.UUID) s
 	if withExp {
 		claims["exp"] = time.Now().Add(time.Hour).Unix()
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	s, err := tok.SignedString([]byte(testSecret))
+	s, err := testsupport.NewRS256Token(claims).SignedString(testsupport.PrivateKey())
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
@@ -232,8 +235,7 @@ func TestRolesClaim_Slice_NoSingularRole(t *testing.T) {
 		"role":      "system_admin", // legacy, ya ignorado
 		"exp":       time.Now().Add(time.Hour).Unix(),
 	}
-	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	s, _ := tok.SignedString([]byte(testSecret))
+	s, _ := testsupport.NewRS256Token(claims).SignedString(testsupport.PrivateKey())
 	rec := doRequest(t, mux, http.MethodPost, "/api/v1/enrichment/run", map[string]string{
 		"Authorization": "Bearer " + s,
 	})
@@ -256,17 +258,34 @@ func TestHasRole(t *testing.T) {
 	}
 }
 
-// Sanity: un secreto distinto rechaza el token. AuthMiddleware lee JWT_SECRET de env
-// en cada request, así que sobreescribimos DESPUÉS de construir el mux (newAdminMux
-// fija testSecret); el token se firma con testSecret → mismatch → 401.
-func TestEnrichment_WrongSecret_401(t *testing.T) {
+// Sanity: un token firmado con OTRA clave RSA (mismo kid que el keyring) se rechaza → 401.
+// Desde ACC-E03 T6 el secreto ya no verifica nada, así que el «secreto distinto» de antes no
+// probaría la firma: el equivalente es la clave equivocada.
+func TestEnrichment_OtraClave_401(t *testing.T) {
 	var reached bool
 	mux := newAdminMux(t, &reached)
-	t.Setenv("JWT_SECRET", "otro-secreto-distinto-min-32-chars-xxxxxxxxxx")
+	other, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := testsupport.NewRS256Token(jwt.MapClaims{
+		"user_id":   uuid.New().String(),
+		"tenant_id": uuid.New().String(),
+		"namespace": "mc",
+		"roles":     []string{"system_admin"},
+		"exp":       time.Now().Add(time.Hour).Unix(),
+	})
+	s, err := tok.SignedString(other)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := doRequest(t, mux, http.MethodPost, "/api/v1/enrichment/run", map[string]string{
-		"Authorization": "Bearer " + mintToken(t, []string{"system_admin"}, true, uuid.New()),
+		"Authorization": "Bearer " + s,
 	})
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("secreto distinto: got %d, want 401", rec.Code)
+		t.Fatalf("otra clave: got %d, want 401", rec.Code)
+	}
+	if reached {
+		t.Fatal("el handler no debe correr con una firma inválida")
 	}
 }

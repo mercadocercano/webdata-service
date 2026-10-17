@@ -48,14 +48,10 @@ func (r *PostgresSourceRepository) FindByID(ctx context.Context, tenantID, id uu
 		health_score, total_runs, successful_runs, failed_runs,
 		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, excluded_brands, created_at, updated_at`
 
-	var row *sql.Row
-	if tenantID == database.GlobalTenantID {
-		query := `SELECT ` + cols + ` FROM webdata_sources WHERE id=$1 AND is_active=true`
-		row = r.db.QueryRowContext(ctx, query, id)
-	} else {
-		query := `SELECT ` + cols + ` FROM webdata_sources WHERE tenant_id=$1 AND id=$2 AND is_active=true`
-		row = r.db.QueryRowContext(ctx, query, tenantID, id)
-	}
+	// Tenant-scoped, fail-closed (D9a): the GlobalTenantID branch that read across tenants
+	// was removed in PLAT-E39 T9c2. Platform cross-tenant reads use FindAllActiveByCategoryPlatform.
+	query := `SELECT ` + cols + ` FROM webdata_sources WHERE tenant_id=$1 AND id=$2 AND is_active=true`
+	row := r.db.QueryRowContext(ctx, query, tenantID, id)
 	return r.scanSource(row)
 }
 
@@ -112,6 +108,37 @@ func (r *PostgresSourceRepository) FindAll(ctx context.Context, tenantID uuid.UU
 		sources = append(sources, s)
 	}
 	return sources, total, rows.Err()
+}
+
+// FindAllActiveByCategoryPlatform reads the active sources for a category across ALL
+// tenants — the explicit platform read path that replaces the GlobalTenantID sentinel
+// (PLAT-E39 T9c2, D9a). No tenant scoping by design: this MUST run only under verified
+// platform auth (system_admin) and only from the enrichment usecase; there is no RLS
+// backstop on webdata_sources. Tenant-scoped reads use FindAll.
+func (r *PostgresSourceRepository) FindAllActiveByCategoryPlatform(ctx context.Context, category string) ([]*entity.Source, error) {
+	query := `SELECT id, tenant_id, name, base_url, category, source_type, city,
+		priority, tier, extraction_schema, crawl_config, firecrawl_method, prompt, cron_expression, next_run_at, is_active,
+		health_score, total_runs, successful_runs, failed_runs,
+		last_run_at, last_success_at, last_failure_reason, consecutive_failures, notes, excluded_brands, created_at, updated_at
+		FROM webdata_sources
+		WHERE is_active=true AND category=$1
+		ORDER BY created_at DESC`
+
+	rows, err := r.db.QueryContext(ctx, query, category)
+	if err != nil {
+		return nil, fmt.Errorf("listing platform sources by category: %w", err)
+	}
+	defer rows.Close()
+
+	var sources []*entity.Source
+	for rows.Next() {
+		s, err := r.scanSourceRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	return sources, rows.Err()
 }
 
 func (r *PostgresSourceRepository) Update(ctx context.Context, s *entity.Source) error {

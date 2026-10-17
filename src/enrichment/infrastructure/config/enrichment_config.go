@@ -14,13 +14,14 @@ import (
 	"github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/sources/mercadolibre"
 	"github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/sources/openfoodfacts"
 	"github.com/mercadocercano/webdata-service/src/enrichment/infrastructure/sources/perplexity"
+	"github.com/mercadocercano/webdata-service/src/shared/platformauth"
 )
 
 type EnrichmentModule struct {
 	Handler *enrichcontroller.EnrichmentHandler
 }
 
-func NewEnrichmentModule(db *sql.DB) *EnrichmentModule {
+func NewEnrichmentModule(db *sql.DB, tokens *platformauth.ServiceTokenProvider) *EnrichmentModule {
 	// Sources en cascada: ML → OFF → Firecrawl → Perplexity → DALL-E
 	mlAdapter := mercadolibre.NewMLAdapter()
 	sources := []port.ProductSource{
@@ -38,7 +39,7 @@ func NewEnrichmentModule(db *sql.DB) *EnrichmentModule {
 
 	store := enrichimage.NewSpacesStore()
 	repo := enrichpersistence.NewPostgresEnrichmentRepository(db)
-	pimClient := enrichpim.NewPIMClientAdapter()
+	pimClient := enrichpim.NewPIMClientAdapter(tokens)
 
 	runBatchUC := application.NewRunEnrichmentBatchUseCase(pimClient, sources, enhancer, store, repo)
 	getStatusUC := application.NewGetEnrichmentStatusUseCase(repo)

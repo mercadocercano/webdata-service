@@ -9,7 +9,6 @@ import (
 	"github.com/mercadocercano/webdata-service/src/scraping/domain/entity"
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
-	"github.com/mercadocercano/webdata-service/src/shared/database"
 	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
@@ -86,11 +85,11 @@ func (uc *EnrichGlobalProductsUseCase) collectBusinessTypes(items []port.NeedsEn
 }
 
 func (uc *EnrichGlobalProductsUseCase) triggerSourcesForBusinessType(ctx context.Context, businessType string) (created int, errs []string) {
-	isActive := true
-	sources, _, err := uc.sourceRepo.FindAll(ctx, database.GlobalTenantID, sourceport.SourceFilter{
-		Category: businessType,
-		IsActive: &isActive,
-	})
+	// Platform read path (D9a): the enrichment batch finds active sources for a business
+	// type across all tenants via the explicit, named platform method — not via the
+	// removed GlobalTenantID sentinel that produced "WHERE 1=1". This usecase is the
+	// only allowed caller (guard test enforces it) and runs under system_admin auth.
+	sources, err := uc.sourceRepo.FindAllActiveByCategoryPlatform(ctx, businessType)
 	if err != nil {
 		uc.logEvt(webdataport.WebdataEvent{
 			Event:        "webdata.enrichment_sources_failed",

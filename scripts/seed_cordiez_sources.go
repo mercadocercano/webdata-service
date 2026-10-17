@@ -26,8 +26,8 @@
 // After seeding, trigger scrapes via:
 //
 //	curl -s -X POST http://localhost:8150/api/v1/sources/<source_id>/trigger \
-//	  -H "X-API-Key: marketplace-admin-key-2025" \
-//	  -H "X-User-Role: marketplace_admin"
+//	  -H "Authorization: Bearer <jwt>" \
+//	  -H "X-Tenant-ID: <tenant_id>"
 package main
 
 import (
@@ -54,9 +54,10 @@ type sourceRow struct {
 // All categories enabled after gate pass.
 //
 // VTEX category IDs confirmed via /api/catalog_system/pub/category/tree/2:
-//   Almacén=10000, Bebidas=10001, Lácteos=10003, Limpieza y Hogar=10011,
-//   Fiambres y Quesos=10006, Desayuno y Merienda=10008, Kiosco=10014,
-//   Cuidado Personal=10012, Cuidado de la Ropa=10017, Mascotas=10010
+//
+//	Almacén=10000, Bebidas=10001, Lácteos=10003, Limpieza y Hogar=10011,
+//	Fiambres y Quesos=10006, Desayuno y Merienda=10008, Kiosco=10014,
+//	Cuidado Personal=10012, Cuidado de la Ropa=10017, Mascotas=10010
 var cordiezSources = []sourceRow{
 	{
 		name:            "Cordiez - Almacén",

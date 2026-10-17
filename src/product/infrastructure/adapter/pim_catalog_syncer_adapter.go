@@ -15,21 +15,35 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mercadocercano/webdata-service/src/product/domain/port"
+	"github.com/mercadocercano/webdata-service/src/shared/platformauth"
 )
 
+// PIMCatalogSyncerAdapter habla con catalog-service (PLAT-E39 T9b). Antes apuntaba a
+// pim-service con el bypass forjable `X-User-Role: marketplace_admin` (uno de los seis
+// agujeros de aislamiento que motivaron esta épica). Ahora:
+//   - Lee CATALOG_SERVICE_URL (default http://mc-catalog-service:8160), no PIM_SERVICE_URL.
+//   - Autentica con un JWT de servicio `system_admin` (decisión D8), verificado DENTRO de
+//     catalog-service (D3.1) — nunca con un header de rol forjable por el cliente.
+//   - No envía `X-Tenant-ID`: catalog-service no tiene noción de tenant (sus 14 tablas no
+//     llevan tenant_id). Pasar el sentinel GlobalTenantID sería exactamente la fuga que
+//     T9c prohíbe arrastrar.
+//   - Update usa PATCH (T6a), no PUT. RefreshTemplateProducts y la cola apuntan a los paths
+//     de catalog-service.
 type PIMCatalogSyncerAdapter struct {
 	baseURL string
 	client  *http.Client
+	tokens  *platformauth.ServiceTokenProvider
 }
 
-func NewPIMCatalogSyncerAdapter() *PIMCatalogSyncerAdapter {
-	baseURL := os.Getenv("PIM_SERVICE_URL")
+func NewPIMCatalogSyncerAdapter(tokens *platformauth.ServiceTokenProvider) *PIMCatalogSyncerAdapter {
+	baseURL := os.Getenv("CATALOG_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://pim-service:8090"
+		baseURL = "http://mc-catalog-service:8160"
 	}
 	return &PIMCatalogSyncerAdapter{
 		baseURL: baseURL,
 		client:  &http.Client{Timeout: 15 * time.Second},
+		tokens:  tokens,
 	}
 }
 
@@ -42,6 +56,17 @@ type pimGlobalProductListResponse struct {
 	Data  []port.PIMGlobalProduct `json:"data"`
 }
 
+// enrichmentQueueListResponse es el shape de catalog-service
+// `GET /global-catalog/enrichment-queue` (T9a): `products` + `pagination.total` (paridad 1:1
+// con pim). El adapter del lado product sólo consume id/name/brand/category/business_type/
+// quality_score; los campos extra del summary se ignoran al deserializar.
+type enrichmentQueueListResponse struct {
+	Products   []port.NeedsEnrichmentItem `json:"products"`
+	Pagination struct {
+		Total int `json:"total"`
+	} `json:"pagination"`
+}
+
 func (a *PIMCatalogSyncerAdapter) SearchByEAN(ctx context.Context, tenantID uuid.UUID, ean string) (*port.PIMGlobalProduct, error) {
 	if ean == "" {
 		return nil, nil
@@ -52,11 +77,13 @@ func (a *PIMCatalogSyncerAdapter) SearchByEAN(ctx context.Context, tenantID uuid
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	a.setHeaders(req, tenantID)
+	if err := a.setHeaders(req); err != nil {
+		return nil, err
+	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("pim-service unreachable: %w", err)
+		return nil, fmt.Errorf("catalog-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -92,11 +119,13 @@ func (a *PIMCatalogSyncerAdapter) SearchByNameBrand(ctx context.Context, tenantI
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	a.setHeaders(req, tenantID)
+	if err := a.setHeaders(req); err != nil {
+		return nil, err
+	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("pim-service unreachable: %w", err)
+		return nil, fmt.Errorf("catalog-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -113,10 +142,10 @@ func (a *PIMCatalogSyncerAdapter) SearchByNameBrand(ctx context.Context, tenantI
 	if len(items) == 0 {
 		items = body.Data
 	}
-	// PIM's `search` param is a substring (ILIKE) match, so it can return
-	// loosely-related products. Only treat a result as an existing match when
-	// the name is an exact (case-insensitive) match — otherwise we'd overwrite
-	// a different real product's price/image. EAN dedup handles the rest.
+	// catalog-service `search` es substring (ILIKE), igual que pim: puede devolver productos
+	// parecidos pero distintos. Sólo tratamos un resultado como match existente cuando el
+	// nombre es exacto (case-insensitive) — si no, devolvemos nil para que el sync cree el
+	// producto en vez de pisar uno real distinto. EAN dedup maneja el resto.
 	target := strings.TrimSpace(name)
 	for i := range items {
 		if strings.EqualFold(strings.TrimSpace(items[i].Name), target) {
@@ -137,25 +166,33 @@ func (a *PIMCatalogSyncerAdapter) Create(ctx context.Context, tenantID uuid.UUID
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	a.setHeaders(req, tenantID)
+	if err := a.setHeaders(req); err != nil {
+		return nil, err
+	}
 	req.Header.Set("Content-Type", "application/json")
+	// T6a exige X-Request-Id (correlation_id de la auditoría A09) para toda mutación
+	// auditada. El enrichment batch es async/scheduled, sin inbound HTTP significativo,
+	// así que se genera un UUID por write: cada mutación queda trazable en A09.
+	req.Header.Set("X-Request-Id", uuid.NewString())
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("pim-service unreachable: %w", err)
+		return nil, fmt.Errorf("catalog-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pim-service returned status %d on create: %s", resp.StatusCode, string(respBodyBytes))
+		return nil, fmt.Errorf("catalog-service returned status %d on create: %s", resp.StatusCode, string(respBodyBytes))
 	}
 
-	var body pimGlobalProductResponse
-	if err := json.NewDecoder(bytes.NewReader(respBodyBytes)).Decode(&body); err != nil {
+	// catalog-service (T6a) devuelve el producto creado como objeto JSON plano (sin
+	// wrapper `data`), a diferencia del viejo pim. Decodificamos directo en la entidad.
+	var product port.PIMGlobalProduct
+	if err := json.Unmarshal(respBodyBytes, &product); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
-	return body.Data, nil
+	return &product, nil
 }
 
 func (a *PIMCatalogSyncerAdapter) Update(ctx context.Context, tenantID uuid.UUID, id uuid.UUID, updateReq port.UpdatePIMProductRequest) error {
@@ -164,49 +201,62 @@ func (a *PIMCatalogSyncerAdapter) Update(ctx context.Context, tenantID uuid.UUID
 		return fmt.Errorf("marshaling request: %w", err)
 	}
 
+	// T6a expone PATCH (no PUT) para mutaciones admin de global_products; el writer escribe
+	// dato+auditoría A09+fila outbox D5 en una transacción.
 	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/products/%s", a.baseURL, id.String())
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
-	a.setHeaders(req, tenantID)
+	if err := a.setHeaders(req); err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
+	// T6a exige X-Request-Id (correlation_id de la auditoría A09) para mutaciones
+	// auditadas. UUID por write para trazabilidad del batch async de enrichment.
+	req.Header.Set("X-Request-Id", uuid.NewString())
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("pim-service unreachable: %w", err)
+		return fmt.Errorf("catalog-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("pim-service returned status %d on update", resp.StatusCode)
+		return fmt.Errorf("catalog-service returned status %d on update", resp.StatusCode)
 	}
 	return nil
 }
 
-// RefreshTemplateProducts triggers PIM to recalculate business_type_product_templates
-// from verified global_products. Called after a batch sync completes.
+// RefreshTemplateProducts dispara el job de catalog-service que recalcula
+// business_type_product_templates desde global_products verificados (T6d1). Se llama tras
+// un batch sync.
 func (a *PIMCatalogSyncerAdapter) RefreshTemplateProducts(ctx context.Context) error {
-	endpoint := fmt.Sprintf("%s/api/v1/internal/refresh-template-products", a.baseURL)
+	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/refresh-template-products", a.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("creating refresh request: %w", err)
+	}
+	if err := a.setHeaders(req); err != nil {
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("pim-service unreachable for refresh: %w", err)
+		return fmt.Errorf("catalog-service unreachable for refresh: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("pim-service returned status %d on refresh", resp.StatusCode)
+		return fmt.Errorf("catalog-service returned status %d on refresh", resp.StatusCode)
 	}
 	return nil
 }
 
-// ListNeedingEnrichment consulta PIM por productos de global_products con datos incompletos.
+// ListNeedingEnrichment consulta la cola de enrichment de catalog-service
+// (`GET /global-catalog/enrichment-queue`, T9a) por global_products con datos incompletos.
+// Predicado "incompleto" server-side always-on (A03): el caller no inyecta SQL.
 func (a *PIMCatalogSyncerAdapter) ListNeedingEnrichment(ctx context.Context, businessType string, limit, offset int) (*port.ListNeedingEnrichmentResult, error) {
 	params := url.Values{}
 	if businessType != "" {
@@ -219,7 +269,7 @@ func (a *PIMCatalogSyncerAdapter) ListNeedingEnrichment(ctx context.Context, bus
 		params.Set("offset", strconv.Itoa(offset))
 	}
 
-	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/products/needs-enrichment", a.baseURL)
+	endpoint := fmt.Sprintf("%s/api/v1/global-catalog/enrichment-queue", a.baseURL)
 	if len(params) > 0 {
 		endpoint += "?" + params.Encode()
 	}
@@ -228,63 +278,37 @@ func (a *PIMCatalogSyncerAdapter) ListNeedingEnrichment(ctx context.Context, bus
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("X-User-Role", "marketplace_admin")
-	req.Header.Set("X-Tenant-ID", "00000000-0000-0000-0000-000000000000")
+	if err := a.setHeaders(req); err != nil {
+		return nil, err
+	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("pim-service unreachable: %w", err)
+		return nil, fmt.Errorf("catalog-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pim-service returned status %d on needs-enrichment", resp.StatusCode)
+		return nil, fmt.Errorf("catalog-service returned status %d on enrichment-queue", resp.StatusCode)
 	}
 
-	var result port.ListNeedingEnrichmentResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var body enrichmentQueueListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
-	return &result, nil
+	return &port.ListNeedingEnrichmentResult{
+		Items: body.Products,
+		Total: body.Pagination.Total,
+	}, nil
 }
 
-func (a *PIMCatalogSyncerAdapter) setHeaders(req *http.Request, tenantID uuid.UUID) {
-	req.Header.Set("X-User-Role", "marketplace_admin")
-	if token := authTokenFromContext(req.Context()); token != "" {
-		req.Header.Set("Authorization", token)
-		if jwtTenantID := tenantIDFromContext(req.Context()); jwtTenantID != "" {
-			req.Header.Set("X-Tenant-ID", jwtTenantID)
-		} else {
-			req.Header.Set("X-Tenant-ID", tenantID.String())
-		}
-	} else {
-		req.Header.Set("X-Tenant-ID", tenantID.String())
+// setHeaders pone SOLO el Authorization con el JWT de servicio (D8). Sin X-User-Role
+// (forjable, D3.1) ni X-Tenant-ID (catalog-service no tiene tenant).
+func (a *PIMCatalogSyncerAdapter) setHeaders(req *http.Request) error {
+	token, err := a.tokens.Token()
+	if err != nil {
+		return fmt.Errorf("platform service token: %w", err)
 	}
-}
-
-type contextKey string
-
-const authTokenKey contextKey = "auth_token"
-const jwtTenantKey contextKey = "jwt_tenant_id"
-
-func ContextWithAuthToken(ctx context.Context, token string) context.Context {
-	return context.WithValue(ctx, authTokenKey, token)
-}
-
-func ContextWithJWTTenantID(ctx context.Context, tenantID string) context.Context {
-	return context.WithValue(ctx, jwtTenantKey, tenantID)
-}
-
-func authTokenFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(authTokenKey).(string); ok {
-		return v
-	}
-	return ""
-}
-
-func tenantIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(jwtTenantKey).(string); ok {
-		return v
-	}
-	return ""
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }

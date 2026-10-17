@@ -5,7 +5,11 @@
 //
 // Este script one-off fue SUPERADO por el endpoint de primera clase:
 //
-//	POST /pim/api/v1/s2s/global-products/reclassify-business-types
+//	POST /catalog-service/api/v1/global-catalog/products/reclassify
+//
+//	Ruta actualizada 2026-08-06 (PLAT-E39): el endpoint S2S de pim
+//	(`/pim/api/v1/s2s/global-products/reclassify-business-types`) fue eliminado —
+//	el job vive ahora en catalog-service como endpoint admin. La ruta vieja daba 404.
 //	(pim-service · vía Kong route pim-s2s-reclassify-route · key-auth X-API-Key)
 //
 // El endpoint aporta todo lo que este script NO tiene y que el gate L4 exige:
@@ -59,12 +63,12 @@ type change struct {
 }
 
 func main() {
-	apply := flag.Bool("apply", false, "DEPRECADO: deshabilitado. Usar el endpoint POST /pim/api/v1/s2s/global-products/reclassify-business-types")
+	apply := flag.Bool("apply", false, "DEPRECADO: deshabilitado. Usar el endpoint POST /catalog-service/api/v1/global-catalog/products/reclassify")
 	flag.Parse()
 
 	if *apply {
 		fmt.Fprintln(os.Stderr, "DEPRECADO (E24/PR-5): el --apply de este script está deshabilitado.")
-		fmt.Fprintln(os.Stderr, "Usar el endpoint: POST /pim/api/v1/s2s/global-products/reclassify-business-types")
+		fmt.Fprintln(os.Stderr, "Usar el endpoint: POST /catalog-service/api/v1/global-catalog/products/reclassify")
 		fmt.Fprintln(os.Stderr, "(snapshot+rollback, audit, X-Operator-Id, rate-limit y auth S2S). Dry-run local: correr sin --apply.")
 		os.Exit(2)
 	}

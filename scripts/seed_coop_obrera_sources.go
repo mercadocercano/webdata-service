@@ -27,17 +27,19 @@
 //   - items_json_path: "datos.articulos"
 //
 // excluded_brands (E17 decision, memory #96):
-//   ["Cooperativa","Ecoop","Sombra de Toro","Coop","La Canasta de la Coope","Primer Precio"]
+//
+//	["Cooperativa","Ecoop","Sombra de Toro","Coop","La Canasta de la Coope","Primer Precio"]
 //
 // Gate validation:
-//   Run Almacén (id=2) first. Validate RawProducts in webdata_products with
-//   precio + imagen_url, then sync to PIM. After gate passes, run other 5 categories.
+//
+//	Run Almacén (id=2) first. Validate RawProducts in webdata_products with
+//	precio + imagen_url, then sync to PIM. After gate passes, run other 5 categories.
 //
 // After seeding, trigger scrapes via:
 //
 //	curl -s -X POST http://localhost:8170/api/v1/sources/<source_id>/trigger \
-//	  -H "X-API-Key: marketplace-admin-key-2025" \
-//	  -H "X-User-Role: marketplace_admin"
+//	  -H "Authorization: Bearer <jwt>" \
+//	  -H "X-Tenant-ID: <tenant_id>"
 package main
 
 import (
@@ -190,8 +192,7 @@ func main() {
 	fmt.Println("Gate validation — run Almacén first:")
 	fmt.Println("  curl -s -X POST http://localhost:8170/api/v1/scraping/jobs/trigger \\")
 	fmt.Println("    -H 'Content-Type: application/json' \\")
-	fmt.Println("    -H 'X-API-Key: marketplace-admin-key-2025' \\")
-	fmt.Println("    -H 'X-User-Role: marketplace_admin' \\")
+	fmt.Println("    -H 'Authorization: Bearer <jwt>' \\")
 	fmt.Printf("    -H 'X-Tenant-ID: %s' \\\n", tenantID)
 	fmt.Println(`    -d '{"source_id": "<almacen_source_id>"}'`)
 }

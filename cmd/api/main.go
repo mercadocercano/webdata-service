@@ -18,6 +18,8 @@ import (
 	scrapingconfig "github.com/mercadocercano/webdata-service/src/scraping/infrastructure/config"
 	"github.com/mercadocercano/webdata-service/src/scraping/infrastructure/scheduler"
 	"github.com/mercadocercano/webdata-service/src/shared/database"
+	"github.com/mercadocercano/webdata-service/src/shared/middleware"
+	"github.com/mercadocercano/webdata-service/src/shared/platformauth"
 	sourceconfig "github.com/mercadocercano/webdata-service/src/source/infrastructure/config"
 	statsconfig "github.com/mercadocercano/webdata-service/src/stats/infrastructure/config"
 	webdatalogging "github.com/mercadocercano/webdata-service/src/webdata/infrastructure/logging"
@@ -37,6 +39,21 @@ func main() {
 
 	if os.Getenv("JWT_SECRET") == "" {
 		fmt.Fprintln(os.Stderr, "JWT_SECRET env var is required")
+		os.Exit(1)
+	}
+	// ACC-E03 T5b: keyring RS256 de AuthMiddleware — configurado y roto, o ausente en release,
+	// es config rota: no se arranca.
+	if err := middleware.ValidateKeyringFromEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "jwt keyring: %v\n", err)
+		os.Exit(1)
+	}
+
+	// PLAT-E39 T9b / D8: JWT de servicio para autenticar a catalog-service. Se construye
+	// después del fail-fast de JWT_SECRET y sin fallback horneado (D4). Lo comparten los
+	// adaptadores de product y enrichment que llaman a catalog-service.
+	platformTokens, err := platformauth.NewServiceTokenProvider()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "platform service token: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -62,7 +79,7 @@ func main() {
 	webdataLogger := webdatalogging.NewWebdataLogger("webdata-service")
 
 	// DI wiring
-	productModule := productconfig.NewProductModule(db, webdataLogger)
+	productModule := productconfig.NewProductModule(db, webdataLogger, platformTokens)
 	sourceModule := sourceconfig.NewSourceModule(db, nil) // job repo wired after scraping module
 
 	firecrawlAdapter := adapter.NewFirecrawlAdapter(firecrawlKey)
@@ -81,7 +98,7 @@ func main() {
 
 	statsModule := statsconfig.NewStatsModule(sourceModule.Repo, scrapingModule.Repo, productModule.Repo)
 	btProxyCtrl := productcontroller.NewBusinessTypeProxyController()
-	enrichModule := enrichconfig.NewEnrichmentModule(db)
+	enrichModule := enrichconfig.NewEnrichmentModule(db, platformTokens)
 
 	router := api.NewRouter(
 		sourceModule.Controller,

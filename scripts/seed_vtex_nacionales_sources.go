@@ -14,25 +14,26 @@
 // in addition to "Content-Range" (used by Cordiez). No code change needed in the adapter.
 //
 // Category IDs validated via /api/catalog_system/pub/category/tree/1 on 2026-06-17:
-//   Día:       Almacén=1, Desayuno=80, Frescos=121, Bebidas=164, Congelados=200,
-//              Perfumería=216, Limpieza=282, Mascotas=71
-//   Carrefour: Almacén=161, Desayuno y merienda=222, Bebidas=255, Lácteos y frescos=292,
-//              Panadería=336, Congelados=347, Limpieza=359, Perfumería y farmacia=402,
-//              Mascotas=471
-//   MasOnline: Aceites/Aderezos=200005, Arroz/Pastas=200009, Desayunos=200039,
-//              Lácteos=200066, Fiambres=200046, Congelados=200028, Gaseosas=200051,
-//              Limpieza=200086, Farmacia=200092
-//   Farmacity: Farmacia=199, Medicamentos Venta Libre=979, Cuidado Personal=92,
-//              Cuidado de la Piel=93, Cuidado Capilar=130, Perfumes=80,
-//              Maquillaje=2, Hogar y Alimentos=301
+//
+//	Día:       Almacén=1, Desayuno=80, Frescos=121, Bebidas=164, Congelados=200,
+//	           Perfumería=216, Limpieza=282, Mascotas=71
+//	Carrefour: Almacén=161, Desayuno y merienda=222, Bebidas=255, Lácteos y frescos=292,
+//	           Panadería=336, Congelados=347, Limpieza=359, Perfumería y farmacia=402,
+//	           Mascotas=471
+//	MasOnline: Aceites/Aderezos=200005, Arroz/Pastas=200009, Desayunos=200039,
+//	           Lácteos=200066, Fiambres=200046, Congelados=200028, Gaseosas=200051,
+//	           Limpieza=200086, Farmacia=200092
+//	Farmacity: Farmacia=199, Medicamentos Venta Libre=979, Cuidado Personal=92,
+//	           Cuidado de la Piel=93, Cuidado Capilar=130, Perfumes=80,
+//	           Maquillaje=2, Hogar y Alimentos=301
 //
 // excluded_brands validated with live sample 2026-06-17. Ampliar si aparecen más MDD.
 //
 // After seeding, trigger scrapes via:
 //
 //	curl -s -X POST http://localhost:8150/api/v1/sources/<source_id>/trigger \
-//	  -H "X-API-Key: marketplace-admin-key-2025" \
-//	  -H "X-User-Role: marketplace_admin"
+//	  -H "Authorization: Bearer <jwt>" \
+//	  -H "X-Tenant-ID: <tenant_id>"
 package main
 
 import (

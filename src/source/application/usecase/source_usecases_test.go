@@ -46,6 +46,16 @@ func (m *mockSourceRepo) FindAll(ctx context.Context, tenantID uuid.UUID, filter
 	return result, len(result), nil
 }
 
+func (m *mockSourceRepo) FindAllActiveByCategoryPlatform(ctx context.Context, category string) ([]*entity.Source, error) {
+	var result []*entity.Source
+	for _, s := range m.sources {
+		if s.Category == category && s.IsActive {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockSourceRepo) Update(ctx context.Context, s *entity.Source) error {
 	if _, ok := m.sources[s.ID.String()]; !ok {
 		return errors.New("source not found")

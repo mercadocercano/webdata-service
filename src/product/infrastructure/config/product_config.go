@@ -10,6 +10,7 @@ import (
 	productpersistence "github.com/mercadocercano/webdata-service/src/product/infrastructure/persistence"
 	scrapingport "github.com/mercadocercano/webdata-service/src/scraping/domain/port"
 	sourceport "github.com/mercadocercano/webdata-service/src/source/domain/port"
+	"github.com/mercadocercano/webdata-service/src/shared/platformauth"
 	webdataport "github.com/mercadocercano/webdata-service/src/webdata/domain/port"
 )
 
@@ -31,14 +32,14 @@ func (m *ProductModule) WireEnrichment(sourceRepo sourceport.SourceRepository, j
 	m.Controller.SetEnrichUseCase(enrichUC)
 }
 
-func NewProductModule(db *sql.DB, logger webdataport.WebdataEventLogger) *ProductModule {
+func NewProductModule(db *sql.DB, logger webdataport.WebdataEventLogger, tokens *platformauth.ServiceTokenProvider) *ProductModule {
 	repo := productpersistence.NewPostgresProductRepository(db)
 	categoryFinder := productadapter.NewSourceCategoryAdapter(db)
 	upsertUC := productusecase.NewUpsertProductsUseCase(repo, categoryFinder)
 	if logger != nil {
 		upsertUC.WithLogger(logger)
 	}
-	pimSyncer := productadapter.NewPIMCatalogSyncerAdapter()
+	pimSyncer := productadapter.NewPIMCatalogSyncerAdapter(tokens)
 	syncToPIMUC := productusecase.NewSyncProductToPIMUseCase(repo, pimSyncer)
 	if logger != nil {
 		syncToPIMUC.WithLogger(logger)
@@ -53,7 +54,7 @@ func NewProductModule(db *sql.DB, logger webdataport.WebdataEventLogger) *Produc
 	assignBTUC := productusecase.NewAssignBusinessTypesUseCase(repo)
 	removeBTUC := productusecase.NewRemoveBusinessTypeUseCase(repo)
 	bulkAssignBTUC := productusecase.NewBulkAssignBusinessTypeUseCase(repo)
-	btProvider := productadapter.NewPIMBusinessTypeProvider()
+	btProvider := productadapter.NewPIMBusinessTypeProvider(tokens)
 	autoMatchBTUC := productusecase.NewAutoMatchBusinessTypesUseCase(repo, btProvider)
 	getFiltersUC := productusecase.NewGetProductFiltersUseCase(repo)
 	ctrl := productcontroller.NewProductController(listUC, getUC, priceHistUC, deleteUC, bulkDeleteUC, updateUC, assignBTUC, removeBTUC, bulkAssignBTUC, autoMatchBTUC, getFiltersUC, syncToPIMUC)

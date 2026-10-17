@@ -55,6 +55,10 @@ func (m *mockSourceRepo) FindAll(ctx context.Context, tenantID uuid.UUID, filter
 	return nil, 0, nil
 }
 
+func (m *mockSourceRepo) FindAllActiveByCategoryPlatform(ctx context.Context, category string) ([]*sourceentity.Source, error) {
+	return nil, nil
+}
+
 func (m *mockSourceRepo) Update(ctx context.Context, s *sourceentity.Source) error {
 	m.sources[s.ID.String()] = s
 	return nil

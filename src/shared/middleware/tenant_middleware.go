@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/mercadocercano/webdata-service/src/shared/database"
 )
 
 type contextKey string
@@ -16,10 +15,15 @@ const (
 
 func TenantMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Admin requests use global tenant
-		if IsAdminFromContext(r.Context()) {
-			ctx := context.WithValue(r.Context(), TenantIDKey, database.GlobalTenantID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+		// Platform admin (system_admin) callers don't carry a tenant — by design their
+		// data is no tenant's. The enrichment batch reads cross-tenant through the
+		// explicit platform read path (T9c2, FindAllActiveByCategoryPlatform), not
+		// through a sentinel tenant_id in context. So a system_admin request is
+		// forwarded without a tenant_id and WITHOUT requiring X-Tenant-ID. The legacy
+		// branch that set a sentinel tenant_id (the WHERE 1=1 bypass) was removed in
+		// PLAT-E39 T9c1/T9c2 (D9b/D9a); there is no admin tenant in context anymore.
+		if HasRole(r.Context(), "system_admin") {
+			next.ServeHTTP(w, r)
 			return
 		}
 

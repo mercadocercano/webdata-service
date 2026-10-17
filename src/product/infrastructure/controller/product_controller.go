@@ -1,17 +1,14 @@
 package controller
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	productrequest "github.com/mercadocercano/webdata-service/src/product/application/request"
 	productusecase "github.com/mercadocercano/webdata-service/src/product/application/usecase"
-	productadapter "github.com/mercadocercano/webdata-service/src/product/infrastructure/adapter"
 	vo "github.com/mercadocercano/webdata-service/src/product/domain/value_object"
 	"github.com/mercadocercano/webdata-service/src/shared/middleware"
 )
@@ -410,11 +407,10 @@ func (c *ProductController) SyncToPIM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// D8 (PLAT-E39 T9b): webdata autentica a catalog-service con un JWT de servicio
+	// `system_admin` (minted por el adapter), no reenviando el JWT del caller. El tenant
+	// del caller sólo filtra qué productos locales sync; catalog-service no lo recibe.
 	ctx := r.Context()
-	if auth := r.Header.Get("Authorization"); auth != "" {
-		ctx = productadapter.ContextWithAuthToken(ctx, auth)
-		ctx = productadapter.ContextWithJWTTenantID(ctx, extractTenantFromJWT(auth))
-	}
 
 	sourceName := r.URL.Query().Get("source_name")
 	synced, failed, err := c.syncToPIMUC.SyncPending(ctx, tenantID, sourceName)
@@ -443,25 +439,6 @@ func (c *ProductController) GetProductFilters(w http.ResponseWriter, r *http.Req
 	}
 
 	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{"data": filters})
-}
-
-func extractTenantFromJWT(authHeader string) string {
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return ""
-	}
-	var claims struct {
-		TenantID string `json:"tenant_id"`
-	}
-	if json.Unmarshal(payload, &claims) != nil {
-		return ""
-	}
-	return claims.TenantID
 }
 
 func parseIntQuery(r *http.Request, key string, defaultVal int) int {
